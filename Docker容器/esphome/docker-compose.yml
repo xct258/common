@@ -1,0 +1,12 @@
+services:
+  esphome:
+    container_name: ESPHome
+    image: esphome/esphome
+    restart: always
+    privileged: true
+    network_mode: host
+    hostname: esphome
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/config

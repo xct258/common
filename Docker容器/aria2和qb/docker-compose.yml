@@ -1,0 +1,29 @@
+services:
+  qbittorrent:
+    image: superng6/qbittorrentee:latest
+    container_name: qb
+    restart: always
+    network_mode: host
+    environment:
+      - WEBUIPORT=9080
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./qb/配置文件:/config
+      - /home/xct258/下载/qb:/downloads
+
+  aria2:
+    image: superng6/aria2:webui-latest
+    container_name: aria2
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+      - SECRET=这里换成你自己的密码
+      - CACHE=512M
+      - PORT=6800
+      - WEBUI=true
+      - WEBUI_PORT=6880
+      - BTPORT=57866
+    volumes:
+      - ./aria2/config:/config
+      - /home/xct258/下载/aria2:/downloads
+    restart: always

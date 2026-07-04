@@ -1,0 +1,11 @@
+services:
+  opencode:
+    image: xct258/debian-cn:latest
+    container_name: opencode
+    network_mode: "host"
+    # 保持容器运行的关键：分配一个伪终端，模拟交互模式
+    tty: true
+    stdin_open: true
+    volumes:
+      - /home/xct258/opencode:/home/xct258/opencode
+    restart: always

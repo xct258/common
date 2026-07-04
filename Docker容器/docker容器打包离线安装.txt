@@ -1,0 +1,5 @@
+# 打包命令
+docker save 需要打包的容器名称:需要打包的容器标签 -o 容器打包文件名.tar
+
+# 释放命令
+docker load -i 容器打包文件名.tar

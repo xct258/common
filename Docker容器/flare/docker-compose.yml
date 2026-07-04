@@ -1,0 +1,13 @@
+services:
+  flare:
+    image: soulteary/flare:latest
+    container_name: flare
+    restart: always
+    ports:
+      - "127.0.0.1:5005:5005"
+    environment:
+      FLARE_DISABLE_LOGIN: "0"
+      FLARE_USER: "xct258"
+      FLARE_PASS: "这里换成自己的密码"
+    volumes:
+      - ./app:/app

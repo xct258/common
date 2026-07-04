@@ -1,0 +1,16 @@
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO19
+      mode: INPUT_PULLUP  # 或者使用 INPUT_PULLDOWN
+      inverted: False      # 根据需要设置为 True
+    name: "输入传感器_1"  # 可以选择在名称中使用下划线
+    id: input_sensor_1     # 使用下划线替代破折号
+
+  - platform: gpio
+    pin:
+      number: GPIO21
+      mode: INPUT_PULLUP  # 或者使用 INPUT_PULLDOWN
+      inverted: False      # 根据需要设置为 True
+    name: "输入传感器_2"  # 可以选择在名称中使用下划线
+    id: input_sensor_2     # 使用下划线替代破折号

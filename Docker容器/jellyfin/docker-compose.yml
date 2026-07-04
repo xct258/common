@@ -1,0 +1,15 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - TZ=Asia/Shanghai
+      - PUID=1000
+      - PGID=1000
+    ports:
+      - "8096:8096"
+    volumes:
+      - /home/xct258/docker/jellyfin/config:/config
+      - /home/xct258/网盘/onedrive/xct258/视频:/media:ro
+      - /home/xct258/apps/字体:/字体:ro
+    restart: always

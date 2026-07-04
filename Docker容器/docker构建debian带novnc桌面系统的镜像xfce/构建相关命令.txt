@@ -1,0 +1,39 @@
+# 构建命令
+arm64
+docker build --no-cache --network=host -t xct258/debian-xfce:arm64 .
+docker build --network=host -t xct258/debian-xfce:arm64 .
+amd64
+docker build --no-cache --network=host -t xct258/debian-xfce:amd64 .
+docker build --network=host -t xct258/debian-xfce:amd64 .
+# 上传命令
+arm64
+docker push xct258/debian-xfce:arm64
+amd64
+docker push xct258/debian-xfce:amd64
+合并更新latest标签
+docker manifest rm xct258/debian-xfce:latest
+docker manifest create --amend xct258/debian-xfce:latest xct258/debian-xfce:arm64 xct258/debian-xfce:amd64
+docker manifest push xct258/debian-xfce:latest
+
+# 使用buildx构建amd64和arm64平台的镜像（测试只能在amd64平台运行，arm64会报错）
+docker buildx create --name multiarchbuilder --use
+nohup docker buildx build --platform linux/amd64,linux/arm64 -t xct258/debian-xfce --push . >/dev/null 2>&1 &
+docker buildx build --platform linux/amd64,linux/arm64 -t xct258/debian-xfce --push .
+# 删除buildx构建缓存
+docker rm -f buildx_buildkit_multiarchbuilder0
+docker rmi moby/buildkit:buildx-stable-1
+docker volume rm buildx_buildkit_multiarchbuilder0_state
+
+启动命令
+docker run --name debian-xfce --restart=always -e VNC_PASSWORD=your_vnc_password -v /home/xct258/debian-xfce共享文件夹:/home/xct258/debian-xfce共享文件夹 -d -p 6901:6901 xct258/debian-xfce
+docker run --name debian-xfce --restart=always --net=host -e VNC_PASSWORD=your_vnc_password -v /home/xct258/debian-xfce共享文件夹:/home/xct258/debian-xfce共享文件夹 -d xct258/debian-xfce
+
+进入容器
+docker exec -it debian-xfce /bin/bash
+
+删除容器和镜像命令
+docker rm -f debian-xfce
+docker rmi xct258/debian-xfce
+删除构建缓存
+docker image prune
+docker builder prune

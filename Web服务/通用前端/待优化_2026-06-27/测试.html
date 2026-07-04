@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>测试页面</title>
+  <style>
+    .glass-1, .glass-2 {
+      margin: 2rem auto;
+      padding: 2.5rem 3rem;
+      border-radius: 16px;
+      max-width: 420px;
+      text-align: center;
+      background: color-mix(in srgb, var(--bg-image-theme-color) 40%, transparent);
+    }
+
+    .glass-1 {
+      margin-top: 15vh;
+      backdrop-filter: blur(16px);
+      color: var(--bg-image-text-color, #fff);
+    }
+
+    .glass-2 {
+      backdrop-filter: blur(5px);
+      color: var(--bg-image-text-color, #fff);
+      max-width: 520px;
+      margin-bottom: 10vh;
+    }
+  </style>
+</head>
+<body>
+
+  <!--
+    引入 background-switcher.js 并通过 data 属性自动初始化：
+    - data-api      API 地址，页面加载时自动请求随机背景图
+    - data-interval 自动刷新间隔（秒），每 120 秒自动切换背景
+    - data-auth     后端验证接口地址（可选，设置即启用登录）
+
+    登录功能为可选，不加 data-auth 时不启用。
+    登录遮罩叠加在背景图之上，可透过毛玻璃看到背景。
+    支持 Bitwarden / 1Password 等密码管理器的自动填充。
+    页面中可调用 AuthGuard.logout() 退出登录。
+  -->
+  <script src="./background-switcher.js?v=15"
+          data-api="./index.php"
+          data-interval="120"
+          data-auth="./auth-api.php">
+  </script>
+  <script src="./popup.js?v=15"></script>
+
+  <!-- 毛玻璃卡片 1：包含标题、说明和换图按钮 -->
+  <div class="glass-1">
+    <h1>毛玻璃测试-1</h1>
+    <p>这是一个测试页面，用于展示毛玻璃效果的过渡动画。</p>
+    <button onclick="BackgroundSwitcher.init('./index.php')">换一张背景</button>
+  </div>
+
+  <!-- 毛玻璃卡片 2：popup.js 完整演示 -->
+  <div class="glass-2">
+    <h1>popup.js 演示</h1>
+
+    <h3 style="margin:.8rem 0 .4rem;opacity:.8;">Toast 轻提示</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button onclick="Toast.success('操作成功')">Success</button>
+      <button onclick="Toast.error('出错了')">Error</button>
+      <button onclick="Toast.warning('请注意')">Warning</button>
+      <button onclick="Toast.info('提示信息')">Info</button>
+      <button onclick="Toast.success('不自动关闭',{duration:0})">duration: 0</button>
+      <button onclick="Toast.info('左上角',{position:'top-left'})">top-left</button>
+      <button onclick="Toast.info('居中',{position:'top-center'})">top-center</button>
+      <button onclick="Toast.info('右下角',{position:'bottom-right'})">bottom-right</button>
+      <button onclick="Toast.clear()">清除全部</button>
+    </div>
+
+    <h3 style="margin:.8rem 0 .4rem;opacity:.8;">Toast 进阶</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button onclick="var t=Toast.loading('上传中…');setTimeout(function(){t.dismiss();Toast.success('上传完成')},2000)">Loading（2s后完成）</button>
+      <button onclick="Toast.info('已删除文件',{duration:5000,action:{text:'撤销',onClick:function(d){Toast.success('已撤销');d()}}})">带撤销按钮</button>
+      <button onclick="Toast.warning('点击操作',{duration:0,action:{text:'查看',onClick:function(d){Modal.alert('详情内容');d()}}})">带操作按钮</button>
+    </div>
+
+    <h3 style="margin:.8rem 0 .4rem;opacity:.8;">Modal 模态对话框</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button onclick="Modal.alert('这是一条提示',{title:'提示',type:'info'}).then(function(){Toast.info('已确认')})">Alert</button>
+      <button onclick="Modal.confirm('确定要继续吗？',{title:'确认操作',type:'warning'}).then(function(v){Toast.info('结果: '+v)})">Confirm</button>
+      <button onclick="Modal.alert('操作已完成！',{title:'成功',type:'success'})">Success Modal</button>
+      <button onclick="Modal.alert('发生错误',{title:'错误',type:'error'})">Error Modal</button>
+      <button onclick="Modal.show('选择一个操作',{title:'自定义按钮',type:'info',buttons:[{text:'删除',value:'delete',primary:true},{text:'归档',value:'archive'},{text:'取消',value:'cancel'}]}).then(function(v){Toast.info('选择: '+v)})">自定义按钮</button>
+      <button onclick="Modal.confirm('不可关闭的对话框',{title:'强制确认',closable:false,type:'warning'}).then(function(v){Toast.info('结果: '+v)})">不可关闭</button>
+      <button onclick="Modal.confirm('自定义按钮文字',{confirm:'是的',cancel:'不了',type:'info'}).then(function(v){Toast.info(v)})">自定义文字</button>
+    </div>
+
+    <h3 style="margin:.8rem 0 .4rem;opacity:.8;">Modal 进阶</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button onclick="Modal.prompt('请输入用户名',{title:'登录',placeholder:'用户名',type:'info'}).then(function(v){if(v!==null)Toast.success('输入: '+v);else Toast.info('已取消')})">Prompt 输入框</button>
+      <button onclick="Modal.prompt('请输入密码',{title:'验证',inputType:'password',placeholder:'密码',required:true}).then(function(v){if(v!==null)Toast.success('长度: '+v.length)})">密码输入</button>
+      <button onclick="Modal.prompt('给个新名字',{title:'重命名',defaultValue:'untitled.txt',type:'warning'}).then(function(v){if(v!==null)Toast.info('新名称: '+v)})">带默认值</button>
+      <button onclick="var l=Modal.loading('正在处理…');setTimeout(function(){l.update('快完成了…')},1000);setTimeout(function(){l.close();Toast.success('处理完成')},2000)">Loading（2s）</button>
+    </div>
+  </div>
+
+</body>
+</html>

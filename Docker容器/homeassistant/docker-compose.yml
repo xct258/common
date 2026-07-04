@@ -1,0 +1,12 @@
+services:
+  homeassistant:
+    container_name: homeassistant-1
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    volumes:
+      - /home/xct258/docker/homeassistant-1/config:/config
+      - /run/dbus:/run/dbus:ro
+    restart: always
+    privileged: true
+    network_mode: host
+    environment:
+      TZ: Asia/Shanghai
