@@ -1,0 +1,17 @@
+编辑/etc/network/interfaces文件
+写在接口的 iface 段内
+up ip addr add 10.0.1.11/24 dev enp0s6
+down ip addr del 10.0.1.11/24 dev enp0s6
+
+例如
+iface enp0s6 inet static
+        address 10.0.1.10/24
+        gateway 10.0.1.1
+        # dns-* options are implemented by the resolvconf package, if installed
+        dns-nameservers 8.8.8.8
+        dns-search debian
+    up ip addr add 10.0.1.11/24 dev enp0s6
+    down ip addr del 10.0.1.11/24 dev enp0s6
+
+重启生效
+systemctl restart networking
