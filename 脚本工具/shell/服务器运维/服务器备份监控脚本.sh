@@ -48,7 +48,7 @@ while true; do
   done
 
   # 备份完成时间
-  backup_completion_time=$(date +%Y-%m-%d_%H-%M)
+  backup_completion_time=$(date +%Y-%m-%d_%H：%M)
 
   # 同步到 openlist-webdav
   RCLONE_REMOTE="openlist-webdav"
