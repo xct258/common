@@ -50,57 +50,31 @@ while true; do
   # 备份完成时间
   backup_completion_time=$(date +%Y-%m-%d_%H:%M)
 
-  # 自动查找所有可用的 rclone 远程配置，同步到全部
-  remote_names=()
+  # 同步到 openlist-webdav
+  RCLONE_REMOTE="openlist-webdav"
+  RCLONE_PATH="ssd-1/xct258/备份"
+  backup_message=""
   if command -v rclone &>/dev/null; then
-    while IFS= read -r line; do
-      remote_names+=("${line%:}")
-    done < <(rclone listremotes 2>/dev/null)
-  fi
-
-  if [ ${#remote_names[@]} -gt 0 ]; then
-    rclone_remote_path_all="备份/服务器/$server_name"
-    backup_message=""
-    for remote_name in "${remote_names[@]}"; do
-      remote_result=""
-      all_ok=true
-      # 检查远程可用空间（算上删除旧备份后释放的空间）
-      skip_remote=false
-      about_info=$(rclone about "$remote_name:" --json 2>/dev/null)
-      if [ -n "$about_info" ]; then
-        free_bytes=$(echo "$about_info" | jq -r '.free // 0' 2>/dev/null)
-        old_size=$(rclone size "$remote_name:$rclone_remote_path_all/" --json 2>/dev/null | jq -r '.bytes // 0' 2>/dev/null)
-        available_bytes=$((free_bytes + old_size))
-        if [ "$total_backup_size" -gt "$available_bytes" ]; then
-          skip_remote=true
-          remote_result+="- ${remote_name}: 空间不足（需 $total_backup_size 字节，可用 $available_bytes 字节）
+    remote_result=""
+    all_ok=true
+    for backup_file_rclone in "${backup_file_paths[@]}"; do
+      dest_path="$RCLONE_REMOTE:$RCLONE_PATH/$backup_completion_time"
+      if rclone copy "$backup_file_rclone" "$dest_path" >> "$backup_error_dir/sync_result.txt" 2>&1; then
+        remote_result+="- $(basename "$backup_file_rclone") 成功
 "
-        fi
+      else
+        remote_result+="- $(basename "$backup_file_rclone") 失败
+"
+        all_ok=false
       fi
-      if [ "$skip_remote" = true ]; then
-        backup_message+="$remote_result"
-        continue
-      fi
-      rclone delete "$remote_name:$rclone_remote_path_all/" >> "$backup_error_dir/sync_result.txt" 2>&1
-      rclone rmdirs "$remote_name:$rclone_remote_path_all/" --leave-root >> "$backup_error_dir/sync_result.txt" 2>&1
-      for backup_file_rclone in "${backup_file_paths[@]}"; do
-        dest_path="$remote_name:$rclone_remote_path_all/$backup_completion_time"
-        if rclone copy "$backup_file_rclone" "$dest_path" >> "$backup_error_dir/sync_result.txt" 2>&1; then
-          remote_result+="- ${remote_name}: $(basename "$backup_file_rclone") 成功
-"
-        else
-          remote_result+="- ${remote_name}: $(basename "$backup_file_rclone") 失败
-"
-          all_ok=false
-        fi
-      done
-      backup_message+="$remote_result"
     done
-    if [ -z "$backup_message" ]; then
-      backup_message="备份成功 🎉"
+    if [ "$all_ok" = true ]; then
+      rclone delete "$RCLONE_REMOTE:$RCLONE_PATH/" --exclude "/$backup_completion_time/**" >> "$backup_error_dir/sync_result.txt" 2>&1
+      rclone rmdirs "$RCLONE_REMOTE:$RCLONE_PATH/" --leave-root >> "$backup_error_dir/sync_result.txt" 2>&1
     fi
+    backup_message="$remote_result"
   else
-    backup_message="未检测到 rclone 配置，跳过同步"
+    backup_message="rclone 未安装，跳过同步"
   fi
 
   # 删除临时目录
