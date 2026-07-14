@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 7z 加密密码（可在此修改）
-BACKUP_PASSWORD="your_backup_password"
+# 7z 加密密码（从配置文件读取，未设置则使用默认值）
+BACKUP_PASSWORD=${BACKUP_PASSWORD:-xct258}
 
 # 循环开始
 while true; do
@@ -10,7 +10,6 @@ while true; do
   # 设置需要删除的日志文件路径
   cache_logs=(
   # 不参与备份的日志
-  "/home/xct258/docker/nginx-proxy-manager/data/logs/"
   )
 
   # 循环遍历数组，删除日志文件
@@ -41,41 +40,69 @@ while true; do
     backup_file_paths+=("$backup_file_name")
   done
 
+  # 计算备份文件总大小（字节）
+  total_backup_size=0
+  for f in "${backup_file_paths[@]}"; do
+    s=$(stat -c%s "$f" 2>/dev/null)
+    total_backup_size=$((total_backup_size + s))
+  done
+
   # 备份完成时间
   backup_completion_time=$(date +%Y-%m-%d_%H:%M)
 
-  # 定义要同步到的Rclone远程路径
-  rclone_remote_path1="备份/服务器/$server_name"
-  # 执行rclone同步（如果配置了rclone_config1）
-  if [ -n "$rclone_config1" ]; then
-    exit_codes=()
-    for backup_file_rclone in "${backup_file_paths[@]}"; do
-      rclone copy "$backup_file_rclone" "$rclone_config1:$rclone_remote_path1/$backup_completion_time" >> "$backup_error_dir/sync_result.txt" 2>&1
-      exit_codes+=("$?")
-    done
-
-    # 检查是否有出现异常的命令，有异常出现读取日志
-    all_successful_rclone=true
-    for code_rclone in "${exit_codes[@]}"; do
-      if [ "$code_rclone" -ne 0 ]; then
-        error_info_rclone=$(cat "$backup_error_dir/sync_result.txt")
-        all_successful_rclone=false
-        break
-      fi
-    done
-
-    if [ "$all_successful_rclone" = true ]; then
-      backup_message="备份成功🎉"
-    else
-      backup_message="备份失败⚠%0A"
-      backup_message+="错误信息%0A"
-      backup_message+="$error_info_rclone"
-    fi
-  else
-    backup_message="未配置rclone，跳过同步"
+  # 自动查找所有可用的 rclone 远程配置，同步到全部
+  remote_names=()
+  if command -v rclone &>/dev/null; then
+    while IFS= read -r line; do
+      remote_names+=("${line%:}")
+    done < <(rclone listremotes 2>/dev/null)
   fi
 
-  
+  if [ ${#remote_names[@]} -gt 0 ]; then
+    rclone_remote_path_all="备份/服务器/$server_name"
+    backup_message=""
+    for remote_name in "${remote_names[@]}"; do
+      remote_result=""
+      all_ok=true
+      # 检查远程可用空间（算上删除旧备份后释放的空间）
+      skip_remote=false
+      about_info=$(rclone about "$remote_name:" --json 2>/dev/null)
+      if [ -n "$about_info" ]; then
+        free_bytes=$(echo "$about_info" | jq -r '.free // 0' 2>/dev/null)
+        old_size=$(rclone size "$remote_name:$rclone_remote_path_all/" --json 2>/dev/null | jq -r '.bytes // 0' 2>/dev/null)
+        available_bytes=$((free_bytes + old_size))
+        if [ "$total_backup_size" -gt "$available_bytes" ]; then
+          skip_remote=true
+          remote_result+="- ${remote_name}: 空间不足（需 $total_backup_size 字节，可用 $available_bytes 字节）
+"
+        fi
+      fi
+      if [ "$skip_remote" = true ]; then
+        backup_message+="$remote_result"
+        continue
+      fi
+      rclone delete "$remote_name:$rclone_remote_path_all/" >> "$backup_error_dir/sync_result.txt" 2>&1
+      rclone rmdirs "$remote_name:$rclone_remote_path_all/" --leave-root >> "$backup_error_dir/sync_result.txt" 2>&1
+      for backup_file_rclone in "${backup_file_paths[@]}"; do
+        dest_path="$remote_name:$rclone_remote_path_all/$backup_completion_time"
+        if rclone copy "$backup_file_rclone" "$dest_path" >> "$backup_error_dir/sync_result.txt" 2>&1; then
+          remote_result+="- ${remote_name}: $(basename "$backup_file_rclone") 成功
+"
+        else
+          remote_result+="- ${remote_name}: $(basename "$backup_file_rclone") 失败
+"
+          all_ok=false
+        fi
+      done
+      backup_message+="$remote_result"
+    done
+    if [ -z "$backup_message" ]; then
+      backup_message="备份成功 🎉"
+    fi
+  else
+    backup_message="未检测到 rclone 配置，跳过同步"
+  fi
+
   # 删除临时目录
   rm -rf "$backup_cache_dir"
   rm -rf "$backup_error_dir"
@@ -92,19 +119,17 @@ while true; do
   )
   # 定义全局变量来保存上一次的空间使用情况
   declare -A previous_space_map
-  # 清空消息内容
   message_df=""
-  message_df="目录剩余空间:"
+  message_df="**目录剩余空间:**"
   for ((i = 0; i < ${#check_directories[@]}; i++)); do
     dir_config_df=${check_directories[i]}
-    IFS=':' read -ra check_directory <<< "$dir_config_df"  # 使用IFS来处理包含空格的目录和描述
-    space_usage=$(df -BG "${check_directory[0]}" | awk 'NR==2{print $4}' | sed 's/G$//')  # 获取当前目录的可用空间（以GB为单位）
-    threshold=${threshold_map[${check_directory[1]}]-100}  # 获取目录对应的阈值，如果不存在则默认为100
-    # 检查空间使用情况是否与上一次检查时相同
+    IFS=':' read -ra check_directory <<< "$dir_config_df"
+    space_usage=$(df -BG "${check_directory[0]}" | awk 'NR==2{print $4}' | sed 's/G$//')
+    threshold=${threshold_map[${check_directory[1]}]-100}
     if [[ ${previous_space_map[${check_directory[1]}]-0} -ne 0 ]]; then
-      space_change=$((space_usage - previous_space_map[${check_directory[1]}]))  # 计算空间变化量
+      space_change=$((space_usage - previous_space_map[${check_directory[1]}]))
       if [[ $space_change -gt 0 ]]; then
-        space_change_message="（%2B${space_change}GB）"
+        space_change_message="（+${space_change}GB）"
       elif [[ $space_change -lt 0 ]]; then
         space_change_message="（${space_change}GB）"
       else
@@ -113,14 +138,10 @@ while true; do
     else
       space_change_message=""
     fi
-    if [[ $space_usage -lt $threshold ]]; then
-      message_df+="%0A${check_directory[1]}%0A"
-      message_df+="可用空间为${space_usage}GB⚠${space_change_message}"
-    else
-      message_df+="%0A${check_directory[1]}%0A"
-      message_df+="可用空间为${space_usage}GB${space_change_message}"
-    fi
-    # 更新上一次的空间使用情况
+    message_df+="
+- ${check_directory[1]}: ${space_usage}GB"
+    [[ $space_usage -lt $threshold ]] && message_df+=" ⚠"
+    message_df+="${space_change_message}"
     previous_space_map[${check_directory[1]}]=$space_usage
   done
 
@@ -142,19 +163,16 @@ while true; do
       days_free=$(((-remaining_seconds_free) / (60 * 60 * 24)))
       hours_free=$(((-remaining_seconds_free) % (60 * 60 * 24) / (60 * 60)))
 
-      message_free_time="⚠警告:服务器已超过免费时间:%0A$days_free天$hours_free小时!"
+      message_free_time="**⚠ 服务器已超过免费时间:** $days_free 天 $hours_free 小时"
     else
-      # 计算剩余的天数和小时数
       days_free=$((remaining_seconds_free / (60 * 60 * 24)))
       hours_free=$((remaining_seconds_free % (60 * 60 * 24) / (60 * 60)))
-
-      # 判断是否可以转化为月
       if [[ $days_free -ge 30 ]]; then
         months_free=$((days_free / 30))
         remaining_days_free=$((days_free % 30))
-        message_free_time="服务器剩余免费时间:%0A$months_free个月$remaining_days_free天$hours_free小时"
+        message_free_time="**服务器剩余免费时间:** $months_free 个月 $remaining_days_free 天 $hours_free 小时"
       else
-        message_free_time="服务器剩余免费时间:%0A$days_free天$hours_free小时"
+        message_free_time="**服务器剩余免费时间:** $days_free 天 $hours_free 小时"
       fi
     fi
   fi
@@ -162,16 +180,27 @@ while true; do
   # 当前时间
   completion_time=$(date +"%Y-%m-%d %H:%M")
 
-  # 消息合并
-  message="$server_name%0A"
-  message+="$completion_time%0A"
-  message+="%0A$backup_message%0A"
-  message+="%0A$message_df%0A"
-  message+="%0A$message_free_time"
+  # 消息合并（Markdown 格式）
+  message="## $server_name
+$completion_time
+
+$backup_message
+
+$message_df
+
+$message_free_time"
 
   # 推送消息
-  curl -s -X POST "https://msgpusher.xct258.top/push/root" \
-  -d "title=$server_name&description=每日推送&channel=一般通知&content=${message}" >/dev/null
+  curl -s -X POST "https://push-server.o1-1.xct258.top/api/push" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg sn "$server_name" --arg topic "server/$server_name" --arg msg "$message" '{
+    server_name: $sn,
+    topic: $topic,
+    message: $msg,
+    push_to_mqtt: true,
+    msg_type: "markdown",
+    mode: "append"
+  }')" >/dev/null
 
   # 定义脚本睡眠到指定时间
   schedule_sleep_time="04:20"
