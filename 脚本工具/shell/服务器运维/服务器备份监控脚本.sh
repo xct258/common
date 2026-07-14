@@ -48,11 +48,11 @@ while true; do
   done
 
   # 备份完成时间
-  backup_completion_time=$(date +%Y-%m-%d_%H:%M)
+  backup_completion_time=$(date +%Y-%m-%d_%H-%M)
 
   # 同步到 openlist-webdav
   RCLONE_REMOTE="openlist-webdav"
-  RCLONE_PATH="ssd-1/xct258/备份"
+  RCLONE_PATH="ssd-1/xct258/备份/$server_name"
   backup_message=""
   if command -v rclone &>/dev/null; then
     remote_result=""
