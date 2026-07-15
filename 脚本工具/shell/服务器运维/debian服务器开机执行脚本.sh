@@ -17,17 +17,62 @@ color_text() {
   echo -e "\e[${style_1};${color_1}m${text_1}\e[0m"
 }
 
-apt update
+install_boot_service() {
+  cat > /usr/local/bin/boot-exec.sh <<- 'EOF'
+	#!/bin/bash
+	[ ! -f /etc/boot-exec/tasks.list ] && exit 0
+	while IFS= read -r -e line || [ -n "$line" ]; do
+	  [ -z "$line" ] || [ "${line#\#}" != "$line" ] && continue
+	  bash -c "$line" >/dev/null 2>&1
+	done < /etc/boot-exec/tasks.list
+	EOF
+  chmod +x /usr/local/bin/boot-exec.sh
 
-# 配置cls清屏
-# 检查 /etc/bash.bashrc 文件中是否已经存在 alias cls
-if ! grep -q "alias cls='clear'" /etc/bash.bashrc; then
-    # 如果没有，则添加别名
-    echo "alias cls='clear'" >> /etc/bash.bashrc
-    color_text 32 1 "成功设置cls命令实现清屏"
-fi
-# 使配置文件生效
-source /etc/bash.bashrc
+  cat > /etc/systemd/system/boot-exec.service <<- 'EOF'
+	[Unit]
+	Description=boot-exec
+	After=network-online.target
+
+	[Service]
+	Type=oneshot
+	RemainAfterExit=yes
+	ExecStart=/bin/bash -c "/usr/local/bin/boot-exec.sh &"
+
+	[Install]
+	WantedBy=multi-user.target
+	EOF
+  systemctl daemon-reload && systemctl enable boot-exec.service
+
+  mkdir -p /etc/boot-exec
+  if [ ! -f /etc/boot-exec/tasks.list ]; then
+    cat > /etc/boot-exec/tasks.list <<- 'EOF'
+	# 开机自启任务配置
+	# 每行一个命令，按顺序执行，# 开头的行为注释
+	# 示例：
+	# /root/apps/脚本/服务器备份脚本.sh
+	# docker start nginx
+	EOF
+  fi
+}
+
+get_github_token() {
+  color_text 33 1 "请输入 GitHub 的令牌"
+  read -r -e github_token
+  if [ -z "$github_token" ]; then
+    color_text 31 1 "令牌为空"
+    return 1
+  fi
+  color_text 33 1 "您输入的 GitHub 令牌是: "
+  color_text 32 1 "$github_token"
+  color_text 33 1 "请确认输入的令牌是否正确[y/n]: "
+  read -r -e confirmation
+  if [ "$confirmation" != "y" ]; then
+    color_text 31 1 "令牌未确认"
+    return 1
+  fi
+}
+
+apt update
 
 # 设置时区为上海
 timedatectl set-timezone Asia/Shanghai
@@ -46,7 +91,7 @@ else
   locale-gen zh_CN.UTF-8
   # 设置系统默认语言环境
   update-locale LANG=zh_CN.UTF-8
-  color_text 31 1 "中文语言环境设置成功，请重新连接SSH"
+  color_text 31 1 "中文语言环境设置成功，请重新连接SSH，不要使用exit命令退出！"
   exit 1
 fi
 
@@ -67,56 +112,11 @@ for rm_file in "${rm_files[@]}"; do
     fi
 done
 
-# 定义github的令牌
-while true; do
-    # 提示用户输入 GitHub 令牌
-    color_text 33 1 "请输入 GitHub 的令牌"
-    read -r github_token
-
-    # 确认用户输入的令牌
-    color_text 33 1 "您输入的 GitHub 令牌是: "
-    color_text 32 1 "$github_token"
-    color_text 33 1 "请确认输入的令牌是否正确[y/n]: "
-    read -r confirmation
-
-    if [ "$confirmation" = "y" ]; then
-        color_text 32 1 "令牌已确认。"
-        break  # 退出循环
-    else
-        color_text 31 1 "令牌未确认，请重新输入。"
-    fi
-done
-
-# 检查是否已经配置了 DHCP
-if grep -q 'iface .* inet dhcp' /etc/network/interfaces; then
-    color_text 32 1 "DHCP 已经配置，跳过此步骤。"
-else
-  # 询问用户是否使用 DHCP 获取 IP 地址
-  while true; do
-      color_text 33 1 "是否使用 DHCP 获取 IP 地址？[y/n]: "
-      color_text 31 1 "只能在本地服务器中启用DHCP"
-      read -r use_dhcp
-  
-      if [[ "$use_dhcp" == "y" ]]; then
-          color_text 32 1 "配置 DHCP 获取 IP 地址。"
-          cp /etc/network/interfaces /etc/network/interfaces.bak
-          sed -i '/iface .* inet static/!b; n; :a; N; $!ba; s/.//; P; D' /etc/network/interfaces
-          sed -i '/iface .* inet static/{s/static/dhcp/; n; :a; N; $!ba; d}' /etc/network/interfaces
-          break  # 退出循环
-      elif [[ "$use_dhcp" == "n" ]]; then
-          color_text 32 1 "不配置 DHCP"
-          break  # 退出循环
-      else
-          color_text 31 1 "无效输入，请输入 y 或 n。"
-      fi
-  done
-fi
-
 # 安装7zip
 if [ -e "/bin/7zz" ]; then
   color_text 32 1 "7z已安装"
 else
-  # 获取最新版本号（例如 24.09）
+  # 获取最新版本号
   latest_ver_7z=$(curl -s https://www.7-zip.org/download.html | grep -oP '7z\K[0-9]{4}' | head -1)
   # 使用 uname 命令获取服务器的架构信息，并使用 grep 过滤出包含 "x86_64" 或 "aarch64" 的行
   arch=$(uname -m)
@@ -145,10 +145,18 @@ else
   # 安装Docker
   while true; do
     color_text 33 1 "docker未安装，是否要安装docker？[y/n]: "
-    read -r install_docker
+    read -r -e install_docker
     if [ "$install_docker" == "y" ]; then
       # docker安装官方一键脚本
       curl -fsSL https://get.docker.com | bash -s docker
+      
+      # 【核心修改：安装后立即校验】
+      if command -v docker &> /dev/null; then
+        color_text 32 1 "验证成功：Docker 安装成功！当前版本如下："
+        docker --version
+      else
+        color_text 31 1 "错误：Docker 脚本执行完毕，但系统中未检测到 docker 命令，可能安装失败。"
+      fi
       color_text 32 1 "docker已安装"
       break  # 退出循环
     elif [ "$install_docker" == "n" ]; then
@@ -158,62 +166,6 @@ else
       color_text 31 1 "无效输入，请输入 'y' 或 'n'"
     fi
   done
-fi
-
-# 配置开机启动rc.local
-# 检测rc.local文件是否存在
-if [ -f "/etc/rc.local" ]; then
-  color_text 32 1 "rc.local文件存在，无需再次执行"
-else
-  # 下载动rc.local文件
-  wget --inet4-only --header="Authorization: token $github_token" -O /etc/rc.local https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/服务器相关/other/rc.local
-  chmod +x /etc/rc.local
-  systemctl enable --now rc-local
-  color_text 32 1 "rc-local开机启动配置成功"
-fi
-
-# 检测服务器的ipv4地址和ipv6地址
-ipv6_address=$(curl -6 -s --connect-timeout 10 icanhazip.com || true)
-ipv4_address=$(curl -4 -s --connect-timeout 10 icanhazip.com || true)
-# 检测ipv6地址是否存在
-if [ -n "$ipv6_address" ]; then
-  color_text 32 1 "IPv6地址存在，跳过配置IPv6"
-else
-  # 添加IPv6
-  # 获取第一个非回环接口的名称
-  interface=$(ip -o -4 route show to default | awk '{print $5; exit}')
-  if [ -z "$interface" ]; then
-    color_text 33 1 "未找到可用的网络接口"
-  else
-    # 直接进入 IPv6 添加交互（不再检测 iface .* inet6 dhcp）
-    valid_choice_ipv6=false
-    while [ "$valid_choice_ipv6" = false ]; do
-      color_text 33 1 "是否添加IPv6配置？[y/n]: "
-      read -r ipv6_automatic
-      case "$ipv6_automatic" in
-        y|Y)
-          # 仅追加 up/down 脚本到 /etc/network/interfaces（不写 iface 行），并避免重复添加
-          if ! grep -Fq "up sleep 10 && /sbin/dhclient -6 $interface" /etc/network/interfaces; then
-            echo "up sleep 10 && /sbin/dhclient -6 $interface" >> /etc/network/interfaces
-            echo "down /sbin/dhclient -6 -r $interface" >> /etc/network/interfaces
-            color_text 32 1 "up/down DHCPv6 命令已追加到 /etc/network/interfaces；接口启动时将延时触发 DHCPv6 请求"
-            color_text 32 1 "正在重启网络服务以应用更改，请稍候..."
-            systemctl restart networking
-          else
-            color_text 32 1 "up/down DHCPv6 命令已存在于 /etc/network/interfaces，跳过添加"
-          fi
-          valid_choice_ipv6=true
-          ;;
-        n|N)
-          color_text 32 1 "已取消添加IPv6"
-          valid_choice_ipv6=true
-          ;;
-        *)
-          color_text 31 1 "无效的输入，请重新输入"
-          ;;
-      esac
-    done
-  fi
 fi
 
 # 检测ufw防火墙是否启用
@@ -238,7 +190,7 @@ else
   # 询问用户是否安装rclone
   while true; do
     color_text 33 1 "rclone未安装，是否要安装rclone？[y/n]: "
-    read -r install_rclone
+    read -r -e install_rclone
     case "$install_rclone" in
       y)
         # 安装rclone网盘挂载服务
@@ -249,7 +201,7 @@ else
         if [ -f "$CONFIG_FILE_rclone" ]; then
           while true; do
             color_text 33 1 "rclone配置文件已存在，是否覆盖？[y/n]: "
-            read -r overwrite_config
+            read -r -e overwrite_config
             case "$overwrite_config" in
               y)
                 break
@@ -271,14 +223,15 @@ else
         if [ "$overwrite_config" != "" ]; then
           while true; do
             color_text 33 1 "是否需要自动加载rclone配置文件？[y/n]: "
-            color_text 33 1 "注意：有效期到2027年7月"
-            read -r rclone_config
+            read -r -e rclone_config
             case "$rclone_config" in
               y)
-                mkdir -p /root/.config/rclone
-                wget --header="Authorization: token $github_token" -O "$CONFIG_FILE_rclone" https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf
-                color_text 32 1 "rclone配置文件已加载"
-                break
+                if get_github_token; then
+                  mkdir -p /root/.config/rclone
+                  wget --header="Authorization: token $github_token" -O "$CONFIG_FILE_rclone" https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf
+                  color_text 32 1 "rclone配置文件已加载"
+                  break
+                fi
               ;;
               n)
                 color_text 32 1 "不自动配置"
@@ -303,296 +256,253 @@ else
   done
 fi
 
-# 检测docker是否在服务器启动时启动
-if systemctl is-enabled docker.service &> /dev/null; then
-  # 取消docker开机自动启动
-  systemctl disable docker.socket
-  systemctl disable docker.service
-  color_text 32 1 "docker开机自动启动取消成功"
-fi
-# 将docker启动命令添加到rc.local
-if grep -q "systemctl start docker.service" /etc/rc.local; then
-  color_text 32 1 "docker启动命令已添加到/etc/rc.local，无需添加"
+# 安装开机自启服务
+if [ ! -f /etc/boot-exec/tasks.list ]; then
+  color_text 33 1 "安装开机自启服务"
+  install_boot_service
 else
-  sed -i '$i\systemctl start docker.service' /etc/rc.local
-  color_text 32 1 "docker启动命令已添加到/etc/rc.local"
-fi
-
-# swap交换分区
-# 函数：删除分区（指定设备和分区号）
-delete_partition() {
-  local device=$1
-  local part_num=$2
-  fdisk /dev/"$device" <<EOF
-d
-$part_num
-w
-EOF
-}
-# 函数：重建主分区（GPT类型）
-recreate_partition_gpt() {
-  local device=$1
-  local part_num=$2
-  fdisk /dev/"$device" <<EOF
-d
-$part_num
-n
-$part_num
-
-
-w
-EOF
-}
-# 主程序开始
-if [ -n "$(swapon -s)" ]; then
-  while true; do
-    color_text 33 1 "是否需要删除 swap 分区？[y/n]: "
-    read -r keep_swap
-    if [ "$keep_swap" == "y" ]; then
-      # 获取swap信息
-      swap_device=$(swapon -s | awk 'NR==2{print $1}')
-      swap_uuid=$(blkid -s UUID -o value "$swap_device")
-      swap_number=$(echo "$swap_device" | grep -oE '[0-9]+$')
-      root_partition=$(df / | awk 'NR==2 {print $1}')
-      root_device=$(lsblk -no pkname "$root_partition")
-      root_partition_number=$(echo "$root_partition" | grep -oE '[0-9]+$')
-
-      # 禁用 swap 并更新 fstab
-      swapoff "$swap_device"
-      sed -i "/UUID=$swap_uuid/d" /etc/fstab
-      color_text 32 1 "Swap 分区已禁用，并从 /etc/fstab 移除"
-
-      # 删除 swap 分区
-      delete_partition "$root_device" "$swap_number"
-      color_text 32 1 "Swap 分区已删除"
-
-      # 判断分区表类型
-      disk_label_type=$(fdisk -l /dev/"$root_device" | grep -E 'Disklabel type|磁盘标签类型' | sed 's/.*[：:] *//')
-
-      color_text 33 1 "开始调整分区表以扩展根分区..."
-
-      # 依据分区表类型重建根分区
-      if [[ "$disk_label_type" == "dos" ]]; then
-        color_text 33 1 "MBR 分区表，跳过分区调整"
-      elif [[ "$disk_label_type" == "gpt" ]]; then
-        recreate_partition_gpt "$root_device" "$root_partition_number"
-        # 扩展文件系统
-        fs_type=$(lsblk -no FSTYPE "$root_partition")
-        case "$fs_type" in
-          ext4)
-            color_text 32 1 "扩展 ext4 文件系统..."
-            resize2fs "$root_partition"
-            color_text 32 1 "ext4 文件系统扩展完成"
-            ;;
-          xfs)
-            color_text 32 1 "扩展 xfs 文件系统..."
-            xfs_growfs "$root_partition"
-            color_text 32 1 "xfs 文件系统扩展完成"
-            ;;
-          *)
-            color_text 31 1 "不支持的文件系统类型: $fs_type"
-            ;;
-        esac
-      else
-        color_text 31 1 "不支持的分区表类型: $disk_label_type"
-        break
-      fi
-      break
-    elif [ "$keep_swap" == "n" ]; then
-      color_text 32 1 "不删除 swap 分区"
-      break
-    else
-      color_text 31 1 "无效输入，请输入 'y' 或 'n'"
-    fi
-  done
-else
-  color_text 32 1 "当前没有启用的 swap 分区"
+  color_text 33 1 "开机自启服务存在，跳过安装"
 fi
 
 # 添加服务器备份/监控脚本
-while true; do
-  color_text 32 1 "输入服务器名称"
-  color_text 33 1 "示例：甲骨文-1-debian-1"
-  read -r server_name
-
-  # 显示用户输入的服务器名称并确认是否重新输入
-  color_text 32 1 "您输入的服务器名称是："
-  color_text 32 1 "$server_name"
-  color_text 33 1 "是否确认服务器名称？[y/n]: "
-  read -r input_name_sever
-    if [ "$input_name_sever" == "y" ]; then
-      # 创建必要的文件夹
-    if [ -d "/root/apps/脚本/config" ]; then
-      color_text 32 1 "/root/apps/脚本/config文件夹已存在，跳过创建"
-    else
-      mkdir -p "/root/apps/脚本/config"
-    fi
-    # 将服务器名称写入文件
-    echo server_name="$server_name" > /root/apps/脚本/config/服务器基本信息.txt
-    # 退出循环
-    break
+CONFIG_FILE="/root/apps/脚本/config/服务器基本信息.txt"
+if [ -f "$CONFIG_FILE" ] && grep -q "^server_name=" "$CONFIG_FILE" 2>/dev/null; then
+  old_name=$(grep "^server_name=" "$CONFIG_FILE" | cut -d= -f2)
+  color_text 33 1 "当前服务器名称: $old_name"
+  color_text 33 1 "是否重新设置？[y/n]: "
+  read -r -e reset_name
+  if [ "$reset_name" != "y" ]; then
+    server_name="$old_name"
+    color_text 32 1 "使用现有服务器名称: $server_name"
+    skip_name_input=true
   fi
-done
+fi
+
+if [ "$skip_name_input" != "true" ]; then
+  while true; do
+    color_text 32 1 "输入服务器名称"
+    color_text 33 1 "示例：甲骨文-1-debian-1"
+    read -r -e server_name
+    color_text 32 1 "您输入的服务器名称是："
+    color_text 32 1 "$server_name"
+    color_text 33 1 "是否确认服务器名称？[y/n]: "
+    read -r -e input_name_sever
+    if [ "$input_name_sever" == "y" ]; then
+      mkdir -p "/root/apps/脚本/config"
+      echo server_name="$server_name" > "$CONFIG_FILE"
+      break
+    fi
+  done
+fi
 color_text 33 1 "是否需要自动加载备份/监控脚本？[y/n]: "
-read -r sever_backup
+read -r -e server_backup
 
 # 验证用户输入
-while [[ ! $sever_backup =~ ^[YyNn]$ ]]; do
+while [[ ! $server_backup =~ ^[YyNn]$ ]]; do
   color_text 33 1 "输入无效，请输入[y/n]："
-  read -r sever_backup
+  read -r -e server_backup
 done
-if [[ ! $sever_backup =~ ^[Yy]$ ]]; then
+if [[ ! $server_backup =~ ^[Yy]$ ]]; then
   color_text 32 1 "不自动配置脚本"
   # 询问用户是否安装用户登陆ssh推送消息脚本
   color_text 33 1 "是否添加用户登陆ssh推送消息脚本？[y/n]: "
-  read -r install_ssh_push
+  read -r -e install_ssh_push
 
   # 验证用户输入
   while [[ ! $install_ssh_push =~ ^[YyNn]$ ]]; do
     color_text 33 1 "输入无效，请输入[y/n]："
-    read -r install_ssh_push
+    read -r -e install_ssh_push
   done
   if [[ ! $install_ssh_push =~ ^[Yy]$ ]]; then
     color_text 32 1 "不添加ssh推送消息脚本"
   else
-    wget --header="Authorization: token $github_token" -O /etc/profile.d/ssh_login_notify.sh https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/服务器相关/other/ssh登录提醒.sh
+    wget -O /etc/profile.d/ssh_login_notify.sh https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh
     chmod +x /etc/profile.d/ssh_login_notify.sh
     color_text 32 1 "用户登陆ssh推送消息配置完成"
   fi
 else
   # 下载脚本
-  wget --header="Authorization: token $github_token" -O "$server_name".sh https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/服务器相关/sh/服务器备份监控脚本.sh
+  wget -O "$server_name".sh https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/服务器备份监控脚本.sh
   chmod +x "$server_name".sh
   mv "$server_name".sh "/root/apps/脚本/$server_name.sh"
 
   # 询问用户是否需要输入可用时间
-  color_text 33 1 "是否需要输入${server_name}的可用时间？[y/n]："
-  read -r need_input
-  # 验证用户输入
-  while [[ ! $need_input =~ ^[YyNn]$ ]]; do
-    color_text 33 1 "输入无效，请输入[y/n]："
-    read -r need_input
-  done
-  if [[ ! $need_input =~ ^[Yy]$ ]]; then
-    color_text 32 1 "您选择不输入可用时间，将跳过该步骤。"
-  else
-    while true; do
-      color_text 33 1 "请输入${server_name}可用时间（格式：YYYY-MM-DD）："
-      read -r server_free_date
-      # 检查格式是否正确（4位年-2位月-2位日）
-      if [[ ! $server_free_date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-        color_text 31 1 "格式错误，请重新输入（例如 2025-10-07）。"
-        continue
+  if grep -q "^server_free_datetime=" "$CONFIG_FILE" 2>/dev/null; then
+    old_date=$(grep "^server_free_datetime=" "$CONFIG_FILE" | cut -d= -f2)
+    if [ -n "$old_date" ]; then
+      color_text 33 1 "当前可用时间: $old_date"
+      color_text 33 1 "是否重新设置？[y/n]："
+      read -r -e reset_date
+      if [ "$reset_date" != "y" ]; then
+        server_free_date="$old_date"
+        skip_date=true
       fi
-      # 使用 date 验证并检查是否被自动修正
-      valid_date=$(date -d "$server_free_date" "+%Y-%m-%d" 2>/dev/null)
-
-      if [[ "$valid_date" == "$server_free_date" ]]; then
-        color_text 32 1 "您输入的日期为：$server_free_date"
+    fi
+  fi
+  if [ "$skip_date" != "true" ]; then
+    while true; do
+      color_text 33 1 "是否需要输入${server_name}的可用时间？[y/n]："
+      read -r -e need_input
+      while [[ ! $need_input =~ ^[YyNn]$ ]]; do
+        color_text 33 1 "输入无效，请输入[y/n]："
+        read -r -e need_input
+      done
+      if [[ ! $need_input =~ ^[Yy]$ ]]; then
+        color_text 32 1 "您选择不输入可用时间，将跳过该步骤。"
         break
-      else
-        color_text 31 1 "日期无效，请重新输入。"
+      fi
+      while true; do
+        color_text 33 1 "请输入${server_name}可用时间（格式：YYYY-MM-DD）："
+        read -r -e server_free_date
+        if [[ ! $server_free_date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+          color_text 31 1 "格式错误，请重新输入（例如 2025-10-07）。"
+          continue
+        fi
+        valid_date=$(date -d "$server_free_date" "+%Y-%m-%d" 2>/dev/null)
+        if [[ "$valid_date" != "$server_free_date" ]]; then
+          color_text 31 1 "日期无效，请重新输入。"
+          continue
+        fi
+        today=$(date "+%Y-%m-%d")
+        if [[ ! "$server_free_date" > "$today" ]]; then
+          color_text 31 1 "可用时间必须大于今天($today)，请重新输入。"
+          continue
+        fi
+        break
+      done
+      color_text 32 1 "您输入的日期为：$server_free_date"
+      color_text 33 1 "是否确认？[y/n]："
+      read -r -e confirm_date
+      while [[ ! $confirm_date =~ ^[YyNn]$ ]]; do
+        color_text 33 1 "输入无效，请输入[y/n]："
+        read -r -e confirm_date
+      done
+      if [ "$confirm_date" == "y" ]; then
+        break
       fi
     done
   fi
 
   # 将服务器可用时间写入文件
-  echo server_free_datetime="$server_free_date" >> /root/apps/脚本/config/服务器基本信息.txt
+  if [ -n "$server_free_date" ]; then
+    if grep -q "^server_free_datetime=" "$CONFIG_FILE" 2>/dev/null; then
+      sed -i "s/^server_free_datetime=.*/server_free_datetime=$server_free_date/" "$CONFIG_FILE"
+    else
+      echo server_free_datetime="$server_free_date" >> "$CONFIG_FILE"
+    fi
+  fi
 
   # 询问用户是否需要备份服务器上的目录
-  color_text 33 1 "是否需要备份服务器上的目录？[y/n]："
-  read -r need_backup
-  # 验证用户输入
-  while [[ ! $need_backup =~ ^[YyNn]$ ]]; do
-    color_text 33 1 "输入无效，请输入[y/n]："
-    read -r need_backup
-  done
-  if [[ ! $need_backup =~ ^[Yy]$ ]]; then
-    color_text 32 1 "不备份服务器上的目录"
-  else
-    # 初始化备份目录数组，默认包含两个目录
-    backup_directories=("/home/xct258/docker" "/home/xct258/apps")
-
-    # 提示用户默认添加的目录
-    color_text 34 1 "默认已添加以下目录："
-    for dir in "${backup_directories[@]}"; do
-      color_text 32 1 "- $dir"
-    done
-
-    while true; do
-      color_text 33 1 "请输入要备份的目录路径（如果不需要继续添加，请输入 'done'）："
-      
-      # 显示已添加的目录
-      if [ ${#backup_directories[@]} -gt 0 ]; then
-        color_text 34 1 "当前已添加的目录："
-        for dir in "${backup_directories[@]}"; do
-          color_text 32 1 "- $dir"
-        done
-        color_text 33 1 "可以继续添加，输入 'done' 完成添加"
-      fi
-      
-      read -r directory
-      
-      # 检查用户是否完成输入
-      if [[ $directory == "done" ]]; then
-        break
-      fi
-      
-      # 确认添加目录
-      printf "%b" "$(color_text 33 1 "您输入的目录路径为：")"
-      printf "%b" "$(color_text 32 1 "$directory")"
-      printf "%b" "$(color_text 33 1 " 确认添加该目录吗？[y/n]：")"
-      read -r confirm
-      while [[ ! $confirm =~ ^[YyNn]$ ]]; do
-        color_text 33 1 "输入无效，请输入[y/n]："
-        read -r confirm
+  if grep -q "^backup_directories=(" "$CONFIG_FILE" 2>/dev/null; then
+    mapfile -t old_dirs < <(sed -n '/^backup_directories=(/,/^)/{ /^backup_directories=(/d; /^)/d; s/^[[:space:]]*"\(.*\)"/\1/p }' "$CONFIG_FILE")
+    if [ ${#old_dirs[@]} -gt 0 ]; then
+      color_text 33 1 "当前备份目录:"
+      for dir in "${old_dirs[@]}"; do
+        color_text 32 1 "- $dir"
       done
-      if [[ $confirm =~ ^[Yy]$ ]]; then
-        backup_directories+=("$directory")
-      else
-        color_text 31 1 "取消添加目录：$directory"
+      color_text 33 1 "是否重新设置？[y/n]："
+      read -r -e reset_backup
+      if [ "$reset_backup" != "y" ]; then
+        backup_directories=("${old_dirs[@]}")
+        skip_backup=true
       fi
-    done
+    fi
+  fi
 
-    # 将备份目录写入文件
+  if [ "$skip_backup" != "true" ]; then
+    color_text 33 1 "是否需要备份服务器上的目录？[y/n]："
+    read -r -e need_backup
+    while [[ ! $need_backup =~ ^[YyNn]$ ]]; do
+      color_text 33 1 "输入无效，请输入[y/n]："
+      read -r -e need_backup
+    done
+    if [[ ! $need_backup =~ ^[Yy]$ ]]; then
+      color_text 32 1 "不备份服务器上的目录"
+    else
+      backup_directories=("/home/xct258/docker" "/home/xct258/apps")
+
+      color_text 34 1 "默认已添加以下目录："
+      for dir in "${backup_directories[@]}"; do
+        color_text 32 1 "- $dir"
+      done
+
+      while true; do
+        color_text 33 1 "请输入要备份的目录路径（如果不需要继续添加，请输入 'done'）："
+        
+        if [ ${#backup_directories[@]} -gt 0 ]; then
+          color_text 34 1 "当前已添加的目录："
+          for dir in "${backup_directories[@]}"; do
+            color_text 32 1 "- $dir"
+          done
+          color_text 33 1 "可以继续添加，输入 'done' 完成添加"
+        fi
+        
+        read -r -e directory
+        
+        if [[ $directory == "done" ]]; then
+          break
+        fi
+        
+        printf "%b" "$(color_text 33 1 "您输入的目录路径为：")"
+        printf "%b" "$(color_text 32 1 "$directory")"
+        printf "%b" "$(color_text 33 1 " 确认添加该目录吗？[y/n]：")"
+        read -r -e confirm
+        while [[ ! $confirm =~ ^[YyNn]$ ]]; do
+          color_text 33 1 "输入无效，请输入[y/n]："
+          read -r -e confirm
+        done
+        if [[ $confirm =~ ^[Yy]$ ]]; then
+          backup_directories+=("$directory")
+        else
+          color_text 31 1 "取消添加目录：$directory"
+        fi
+      done
+    fi
+  fi
+
+  # 将备份目录写入文件
+  if [ ${#backup_directories[@]} -gt 0 ]; then
+    if grep -q "^backup_directories=(" "$CONFIG_FILE" 2>/dev/null; then
+      sed -i '/^backup_directories=(/,/^)/d' "$CONFIG_FILE"
+    fi
     {
       echo "backup_directories=("
       for dir in "${backup_directories[@]}"; do
         echo "  \"$dir\""
       done
       echo ")"
-    } >> "/root/apps/脚本/config/服务器基本信息.txt"
-    color_text 32 1 "备份目录已保存到 /root/apps/脚本/config/服务器基本信息.txt"
-
+    } >> "$CONFIG_FILE"
+    color_text 32 1 "备份目录已保存到 $CONFIG_FILE"
   fi
 
-  # 检查脚本是否已添加到开机启动
-  if grep -q "/root/apps/脚本/$server_name.sh>/dev/null 2>&1 &" /etc/rc.local; then
-    color_text 32 1 "'$server_name'脚本开机启动已添加到/etc/rc.local，无需添加"
-  else
-    # 将脚本添加到开机启动
-    sed -i '$i\'/root/apps/脚本/$server_name.sh'>/dev/null 2>&1 &' /etc/rc.local
-    color_text 32 1 "'$server_name'脚本开机启动已添加到/etc/rc.local"
+  color_text 33 1 "请输入 7z 加密密码（直接回车使用默认密码）："
+  read -r -e backup_password
+  if [ -n "$backup_password" ]; then
+    if grep -q "^BACKUP_PASSWORD=" "$CONFIG_FILE" 2>/dev/null; then
+      sed -i "s/^BACKUP_PASSWORD=.*/BACKUP_PASSWORD=$backup_password/" "$CONFIG_FILE"
+    else
+      echo "BACKUP_PASSWORD=$backup_password" >> "$CONFIG_FILE"
+    fi
   fi
+
+  if ! grep -qxF "/root/apps/脚本/$server_name.sh" /etc/boot-exec/tasks.list 2>/dev/null; then
+    echo "/root/apps/脚本/$server_name.sh" >> /etc/boot-exec/tasks.list
+  fi
+
   # 添加ssh登陆提醒脚本
   if [ -f "/etc/profile.d/ssh_login_notify.sh" ]; then
     color_text 32 1 "删除ssh_login_notify.sh文件，重新创建"
     rm /etc/profile.d/ssh_login_notify.sh
   fi
-  wget --header="Authorization: token $github_token" -O /etc/profile.d/ssh_login_notify.sh https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/服务器相关/other/ssh登录提醒.sh
+  wget -O /etc/profile.d/ssh_login_notify.sh https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh
   chmod +x /etc/profile.d/ssh_login_notify.sh
   color_text 32 1 "用户登陆ssh推送消息配置完成"
 
   # 启动脚本
-  nohup "/root/apps/脚本/$server_name.sh">/dev/null 2>&1 &
+  #systemctl start boot-exec.service
+  #nohup "/root/apps/脚本/$server_name.sh">/dev/null 2>&1 &
 fi
 
 color_text 32 1 "执行成功"
-color_text 32 1 "服务器ipv4地址:$ipv4_address"
-color_text 32 1 "服务器ipv6地址:$ipv6_address"
-
-if [ "$keep_swap" == "y" ]; then
-  color_text 31 1 "swap分区已经删除，但是需要重新生效！"
-fi
 
 rm -rf ./debian
