@@ -35,6 +35,9 @@ while true; do
   # 执行备份操作
   backup_file_paths=()
   for backup_dir_2 in "${backup_directories[@]}"; do
+    if [ -d "$backup_dir_2" ] && [ -z "$(ls -A "$backup_dir_2" 2>/dev/null)" ]; then
+      continue
+    fi
     backup_file_name="$backup_cache_dir/$(basename "$backup_dir_2").7z"
     7zz a -p"$BACKUP_PASSWORD" -r -mhe "$backup_file_name" "$backup_dir_2"/* >/dev/null
     backup_file_paths+=("$backup_file_name")
@@ -69,8 +72,13 @@ while true; do
       fi
     done
     if [ "$all_ok" = true ]; then
-      rclone delete "$RCLONE_REMOTE:$RCLONE_PATH/" --exclude "/$backup_completion_time/**" >> "$backup_error_dir/sync_result.txt" 2>&1
-      rclone rmdirs "$RCLONE_REMOTE:$RCLONE_PATH/" --leave-root >> "$backup_error_dir/sync_result.txt" 2>&1
+      mapfile -t dirs < <(rclone lsf "$RCLONE_REMOTE:$RCLONE_PATH/" --dirs-only 2>/dev/null)
+      if [ ${#dirs[@]} -gt 5 ]; then
+        mapfile -t old_dirs < <(printf "%s\n" "${dirs[@]}" | sort | head -n -5)
+        for old_dir in "${old_dirs[@]}"; do
+          rclone purge "$RCLONE_REMOTE:$RCLONE_PATH/$old_dir" >> "$backup_error_dir/sync_result.txt" 2>&1
+        done
+      fi
     fi
     backup_message="$remote_result"
   else
