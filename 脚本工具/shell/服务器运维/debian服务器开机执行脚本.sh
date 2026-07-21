@@ -504,7 +504,7 @@ else
   color_text 32 1 "用户登陆ssh推送消息配置完成"
 
   # 启动脚本
-  #systemctl start boot-exec.service
+  systemctl start boot-exec.service
   #nohup "/root/apps/脚本/$server_name.sh">/dev/null 2>&1 &
 fi
 
