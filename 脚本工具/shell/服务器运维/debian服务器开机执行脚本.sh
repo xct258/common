@@ -122,11 +122,16 @@ else
   arch=$(uname -m)
   # 检查架构信息，根据结果下载不同架构的7zip（版本为2409，请注意更新最新的7zip下载链接）
   if [[ $arch == *"x86_64"* ]]; then
-    wget -O 7zz.tar.xz https://www.7-zip.org/a/7z${latest_ver_7z}-linux-x64.tar.xz
+    download_url="https://www.7-zip.org/a/7z${latest_ver_7z}-linux-x64.tar.xz"
   elif [[ $arch == *"aarch64"* ]]; then
-    wget -O 7zz.tar.xz https://www.7-zip.org/a/7z${latest_ver_7z}-linux-arm64.tar.xz
+    download_url="https://www.7-zip.org/a/7z${latest_ver_7z}-linux-arm64.tar.xz"
   else
-    color_text 31 1 "无法确定服务器架构，请手动安装7z"
+    color_text 31 1 "无法确定服务器架构（$arch），请手动安装7z"
+    exit 1
+  fi
+  if ! wget -O 7zz.tar.xz "$download_url"; then
+    color_text 31 1 "7z 下载失败"
+    exit 1
   fi
   mkdir -p 7zz
   tar -xf 7zz.tar.xz -C 7zz
@@ -504,5 +509,3 @@ else
 fi
 
 color_text 32 1 "执行成功"
-
-rm -rf ./debian

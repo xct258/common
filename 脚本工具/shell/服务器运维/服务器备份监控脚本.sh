@@ -3,10 +3,14 @@
 # 7z 加密密码（从配置文件读取，未设置则使用默认值）
 BACKUP_PASSWORD=${BACKUP_PASSWORD:-xct258}
 
+# 定义全局变量来保存上一次的空间使用情况
+declare -A previous_space_map
+
 # 循环开始
 while true; do
   # 读取服务器基本信息
   source /root/apps/脚本/config/服务器基本信息.txt
+
   # 设置需要删除的日志文件路径
   cache_logs=(
   # 不参与备份的日志
@@ -41,13 +45,6 @@ while true; do
     backup_file_name="$backup_cache_dir/$(basename "$backup_dir_2").7z"
     7zz a -p"$BACKUP_PASSWORD" -r -mhe "$backup_file_name" "$backup_dir_2"/* >/dev/null
     backup_file_paths+=("$backup_file_name")
-  done
-
-  # 计算备份文件总大小（字节）
-  total_backup_size=0
-  for f in "${backup_file_paths[@]}"; do
-    s=$(stat -c%s "$f" 2>/dev/null)
-    total_backup_size=$((total_backup_size + s))
   done
 
   # 备份完成时间
@@ -99,8 +96,6 @@ while true; do
   threshold_map=(
     [根目录]=30
   )
-  # 定义全局变量来保存上一次的空间使用情况
-  declare -A previous_space_map
   message_df=""
   message_df="**目录剩余空间:**"
   for ((i = 0; i < ${#check_directories[@]}; i++)); do
