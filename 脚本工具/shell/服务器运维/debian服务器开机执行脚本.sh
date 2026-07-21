@@ -505,7 +505,6 @@ else
 
   # 启动脚本
   systemctl start boot-exec.service
-  #nohup "/root/apps/脚本/$server_name.sh">/dev/null 2>&1 &
 fi
 
 color_text 32 1 "执行成功"
