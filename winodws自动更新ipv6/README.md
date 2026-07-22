@@ -62,11 +62,3 @@ Windows 系统上自动检测本机公网 IPv6 地址变化，通过 Cloudflare 
 [2026-07-21 12:10:01] 更新成功 | 2408::xxx → 2408::yyy
 [2026-07-21 12:20:03] 新建成功 | 无(未发现记录) → 2408::zzz
 ```
-
-## 编译
-
-需要安装 [Go](https://go.dev/dl/)。双击 `build.bat` 或在目录下执行：
-
-```bat
-go build -ldflags="-s -w" -o ipv6_ddns.exe ipv6_ddns.go
-```
