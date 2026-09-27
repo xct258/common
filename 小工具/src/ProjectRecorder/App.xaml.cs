@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using ProjectRecorder.Services;
 
 namespace ProjectRecorder;
 
@@ -48,12 +49,21 @@ public partial class App : Application
 
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            var login = new LoginWindow();
-            bool? ok = login.ShowDialog();
-            if (ok != true)
+            // 记住了登录：跳过登录框直接进入（配置文件损坏/换 Windows 用户则回退到登录）
+            if (AutoLoginStore.TryLoad(out string savedPassword))
             {
-                Shutdown();
-                return;
+                AuthService.SessionPassword = savedPassword;
+            }
+            else
+            {
+                AutoLoginStore.Disable();
+                var login = new LoginWindow();
+                bool? ok = login.ShowDialog();
+                if (ok != true)
+                {
+                    Shutdown();
+                    return;
+                }
             }
 
             var main = new MainWindow();
@@ -84,7 +94,7 @@ public partial class App : Application
         try
         {
             MessageBox.Show($"程序出现错误（{where}）：\n{ex?.Message}\n\n详细信息已写入 error.log（exe 同级目录）。",
-                "小工具 - 错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                "错误", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         catch
         {

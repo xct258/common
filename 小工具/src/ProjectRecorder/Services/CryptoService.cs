@@ -6,7 +6,7 @@ using System.Text;
 namespace ProjectRecorder.Services;
 
 /// <summary>
-/// AES-256 加密服务。密钥 = SHA256(口令)，每文件随机 16 字节 IV，文件格式 = IV + Ciphertext。
+/// AES-256 加密服务。密钥 = SHA256(密码)，每文件随机 16 字节 IV，文件格式 = IV + Ciphertext。
 /// </summary>
 public static class CryptoService
 {
@@ -18,8 +18,14 @@ public static class CryptoService
 
     public static void EncryptToFile(string plainText, string filePath, string password)
     {
-        byte[] key = DeriveKey(password);
         byte[] plain = Encoding.UTF8.GetBytes(plainText ?? string.Empty);
+        EncryptBytesToFile(plain, filePath, password);
+    }
+
+    public static void EncryptBytesToFile(byte[] plain, string filePath, string password)
+    {
+        byte[] key = DeriveKey(password);
+        byte[] data = plain ?? Array.Empty<byte>();
 
         using Aes aes = Aes.Create();
         aes.KeySize = 256;
@@ -29,7 +35,7 @@ public static class CryptoService
         aes.GenerateIV();
 
         using ICryptoTransform enc = aes.CreateEncryptor();
-        byte[] cipher = enc.TransformFinalBlock(plain, 0, plain.Length);
+        byte[] cipher = enc.TransformFinalBlock(data, 0, data.Length);
 
         byte[] outBytes = new byte[aes.IV.Length + cipher.Length];
         Buffer.BlockCopy(aes.IV, 0, outBytes, 0, aes.IV.Length);
@@ -40,12 +46,17 @@ public static class CryptoService
     public static string DecryptFromFile(string filePath, string password)
     {
         byte[] all = File.ReadAllBytes(filePath);
-        return DecryptBytes(all, password);
+        return Encoding.UTF8.GetString(DecryptToBytes(all, password));
     }
 
-    public static string DecryptBytes(byte[] all, string password)
+    public static byte[] DecryptFileToBytes(string filePath, string password)
     {
-        if (all.Length < 17)
+        return DecryptToBytes(File.ReadAllBytes(filePath), password);
+    }
+
+    public static byte[] DecryptToBytes(byte[] all, string password)
+    {
+        if (all == null || all.Length < 17)
             throw new CryptographicException("数据文件损坏");
 
         byte[] key = DeriveKey(password);
@@ -62,7 +73,11 @@ public static class CryptoService
         aes.Padding = PaddingMode.PKCS7;
 
         using ICryptoTransform dec = aes.CreateDecryptor();
-        byte[] plain = dec.TransformFinalBlock(cipher, 0, cipher.Length);
-        return Encoding.UTF8.GetString(plain);
+        return dec.TransformFinalBlock(cipher, 0, cipher.Length);
+    }
+
+    public static string DecryptBytes(byte[] all, string password)
+    {
+        return Encoding.UTF8.GetString(DecryptToBytes(all, password));
     }
 }

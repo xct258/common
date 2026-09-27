@@ -24,6 +24,10 @@
   <ItemGroup>
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.IO.Compression" />
+    <!-- DPAPI（记住登录，当前 Windows 用户加密） -->
+    <Reference Include="System.Security" />
+    <!-- 仅用于「浏览文件夹」选择框 -->
+    <Reference Include="System.Windows.Forms" />
   </ItemGroup>
 
   <ItemGroup>

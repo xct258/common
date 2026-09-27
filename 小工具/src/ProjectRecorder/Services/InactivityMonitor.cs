@@ -5,12 +5,12 @@ namespace ProjectRecorder.Services;
 
 /// <summary>
 /// 超时防窥（软件内）：只统计本软件窗口内的鼠标+键盘操作。
-/// 在软件外动鼠标/键盘不会重置计时；软件内连续 30 秒无交互即触发 TimedOut，调用方强制退出。
+/// 在软件外动鼠标/键盘不会重置计时；软件内连续 120 秒无交互即触发 TimedOut，调用方强制退出。
 /// 计时重置靠窗口的 Preview* 事件调用 NotifyActivity()。
 /// </summary>
 public sealed class InactivityMonitor : IDisposable
 {
-    public const int TimeoutSeconds = 30;
+    public const int TimeoutSeconds = 120;
 
     public event Action? TimedOut;
     public event Action<int>? Tick;
@@ -36,7 +36,7 @@ public sealed class InactivityMonitor : IDisposable
 
     public void Stop() => _timer.Stop();
 
-    /// <summary>软件内有任何鼠标/键盘活动时调用，重置 30 秒计时。</summary>
+    /// <summary>软件内有任何鼠标/键盘活动时调用，重置 120 秒计时。</summary>
     public void NotifyActivity() => _lastActivity = DateTime.Now;
 
     private void OnTick(object? sender, EventArgs e)

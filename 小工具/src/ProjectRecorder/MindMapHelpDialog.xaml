@@ -1,0 +1,61 @@
+<Window x:Class="ProjectRecorder.MindMapHelpDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="思维导图操作教程" Height="580" Width="640" MinHeight="420" MinWidth="500"
+        WindowStartupLocation="CenterOwner" Background="#F8FAFC">
+    <Window.Resources>
+        <Style x:Key="HelpItem" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#374151"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="LineHeight" Value="19"/>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="思维导图操作教程" FontSize="16" FontWeight="Bold" Foreground="#111827"/>
+
+        <Border Grid.Row="1" Margin="0,12,0,0" Background="White" BorderBrush="#E5E7EB"
+                BorderThickness="1" CornerRadius="10" Padding="16,12">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="一、导图管理" FontSize="14" FontWeight="Bold" Foreground="#1D4ED8"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 顶部「导图名 ▾」下拉：切换已保存的导图，下拉里可 ＋ 新建 / 重命名 / 删除"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 还没有导图时，点顶部按钮或页面中央「＋ 新建思维导图」直接新建"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 所有改动自动加密保存，无需手动存盘；删除导图会连全部节点一起删除"/>
+
+                    <TextBlock Text="二、节点编辑（标题 + 内容）" FontSize="14" FontWeight="Bold"
+                               Foreground="#1D4ED8" Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 双击节点：弹窗编辑「标题 + 内容」两部分；画布上只显示标题，鼠标悬停节点显示内容"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 弹窗内标题必填；内容可多行；Ctrl+Enter 或点「确 定」保存，取消不修改"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 右键节点：添加子节点 / 添加同级节点 / 编辑标题内容 / 删除节点（删除会连子节点一起删）"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 右键空白处：给中心主题添加子节点 / 编辑中心主题"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 选中节点后：Tab 加子节点，Enter 加同级（中心主题为编辑），F2 编辑，Delete 删除"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 方向键移动选择：← 父节点，→ 第一个子节点，↑↓ 同级，Esc 取消选择"/>
+
+                    <TextBlock Text="三、画布视图" FontSize="14" FontWeight="Bold" Foreground="#1D4ED8"
+                               Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 空白处按住拖动：平移画布（也可拖滚动条）"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 鼠标滚轮：缩放（以鼠标位置为中心）；右上角 － / ＋ / 适应窗口"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 节点自动布局：根在左、子级向右展开，增删节点后自动重排"/>
+
+                    <TextBlock Text="四、导出" FontSize="14" FontWeight="Bold" Foreground="#1D4ED8"
+                               Margin="0,14,0,0"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="· 点右上角「导 出 ▾」选择格式："/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="  - 图片（PNG）：整张导图，白底、2 倍分辨率，不受当前缩放影响，适合存档/发人"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="  - 文本大纲（TXT）：按层级缩进输出标题与内容，适合粘贴给 AI 提需求或写文档"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Button Grid.Row="2" Content="知道了" Width="120" Height="34" Margin="0,16,0,0"
+                HorizontalAlignment="Center" Style="{StaticResource BtnPrimary}"
+                Click="BtnClose_Click" IsDefault="True" IsCancel="True"/>
+    </Grid>
+</Window>

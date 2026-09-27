@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -10,18 +11,53 @@ using ProjectRecorder.Models;
 namespace ProjectRecorder.Services;
 
 /// <summary>
-/// 极简 xlsx 导出（无第三方依赖）：标题 + 表头 + 明细，冻结前两行。
+/// 极简 xlsx 导出（无第三方依赖）：标题 + 表头 + 合计，冻结前两行。
+/// 只输出每个 项目/工序 的数量合计（不列明细记录）。
 /// xlsx 本质是 zip 包，这里用 inline 字符串直写，避免 sharedStrings 表。
 /// </summary>
 public static class ExcelExporter
 {
-    public static void ExportWorkload(string path, DateTime day, List<WorkloadRecord> records)
+    public static int ExportWorkload(string path, DateTime day, List<WorkloadRecord> records, string? shift = null)
     {
-        var rows = records
+        // 按 项目 + 工序 汇总，只保留总数
+        var totals = records
+            .GroupBy(x => new { x.ProjectName, x.ProcessName })
+            .Select(g => new
+            {
+                g.Key.ProjectName,
+                g.Key.ProcessName,
+                Quantity = g.Sum(x => x.Quantity)
+            })
             .OrderBy(x => x.ProjectName)
             .ThenBy(x => x.ProcessName)
-            .ThenBy(x => x.CreatedTime)
             .ToList();
+
+        string title = shift == null
+            ? $"工作量统计（{day:yyyy-MM-dd}）"
+            : $"工作量统计（{day:yyyy-MM-dd} {shift}）";
+
+        // 根据表头与内容自动计算列宽（中文按 2 个字符宽估算）
+        double wProject = DisplayWidth("项目"), wProcess = DisplayWidth("工序"), wQty = DisplayWidth("数量");
+        foreach (var t in totals)
+        {
+            wProject = Math.Max(wProject, DisplayWidth(t.ProjectName));
+            wProcess = Math.Max(wProcess, DisplayWidth(t.ProcessName));
+            wQty = Math.Max(wQty, DisplayWidth(t.Quantity.ToString(CultureInfo.InvariantCulture)));
+        }
+        wProject = Math.Min(wProject + 2, 50);
+        wProcess = Math.Min(wProcess + 2, 50);
+        wQty = Math.Min(wQty + 2, 12);
+
+        // 标题在 A1:C1 合并显示，三列总宽不够会被 Excel 截断：按需把缺口均摊到三列（多给 0.3 防四舍五入后仍差一点）
+        double titleWidth = DisplayWidth(title) + 2;
+        double totalWidth = wProject + wProcess + wQty;
+        if (totalWidth < titleWidth)
+        {
+            double add = (titleWidth - totalWidth) / 3.0 + 0.1;
+            wProject += add;
+            wProcess += add;
+            wQty += add;
+        }
 
         using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
         using var zip = new ZipArchive(fs, ZipArchiveMode.Create, false, Encoding.UTF8);
@@ -63,38 +99,60 @@ public static class ExcelExporter
         sb.Append("<sheetViews><sheetView workbookViewId=\"0\">");
         sb.Append("<pane ySplit=\"2\" topLeftCell=\"A3\" activePane=\"bottomLeft\" state=\"frozen\"/>");
         sb.Append("</sheetView></sheetViews>");
+        var merges = new List<string> { "A1:C1" };
         sb.Append("<cols>");
-        sb.Append("<col min=\"1\" max=\"1\" width=\"20\" customWidth=\"1\"/>");
-        sb.Append("<col min=\"2\" max=\"2\" width=\"32\" customWidth=\"1\"/>");
-        sb.Append("<col min=\"3\" max=\"3\" width=\"12\" customWidth=\"1\"/>");
-        sb.Append("<col min=\"4\" max=\"4\" width=\"12\" customWidth=\"1\"/>");
+        sb.Append($"<col min=\"1\" max=\"1\" width=\"{wProject.ToString("0.#", CultureInfo.InvariantCulture)}\" customWidth=\"1\"/>");
+        sb.Append($"<col min=\"2\" max=\"2\" width=\"{wProcess.ToString("0.#", CultureInfo.InvariantCulture)}\" customWidth=\"1\"/>");
+        sb.Append($"<col min=\"3\" max=\"3\" width=\"{wQty.ToString("0.#", CultureInfo.InvariantCulture)}\" customWidth=\"1\"/>");
         sb.Append("</cols><sheetData>");
         sb.Append("<row r=\"1\"><c r=\"A1\" t=\"inlineStr\" s=\"1\"><is><t>");
-        sb.Append(Escape($"工作量统计（{day:yyyy-MM-dd}）"));
+        sb.Append(Escape(title));
         sb.Append("</t></is></c></row>");
         sb.Append("<row r=\"2\">");
         sb.Append(CellInline("A2", "项目", 2));
         sb.Append(CellInline("B2", "工序", 2));
-        sb.Append(CellInline("C2", "班次", 2));
-        sb.Append(CellInline("D2", "数量", 2));
+        sb.Append(CellInline("C2", "数量", 2));
         sb.Append("</row>");
-        for (int i = 0; i < rows.Count; i++)
+        for (int i = 0; i < totals.Count; i++)
         {
-            var r = rows[i];
+            var r = totals[i];
             int row = i + 3;
             sb.Append($"<row r=\"{row}\">");
-            sb.Append(CellInline($"A{row}", r.ProjectName, 0));
-            sb.Append(CellInline($"B{row}", r.ProcessName, 0));
-            sb.Append(CellInline($"C{row}", r.Shift, 0));
-            sb.Append($"<c r=\"D{row}\" s=\"0\"><v>{r.Quantity}</v></c>");
+            // 同一项目的项目名只在首行写一次，其余行合并到该单元格
+            if (i == 0 || totals[i - 1].ProjectName != r.ProjectName)
+            {
+                int j = i;
+                while (j + 1 < totals.Count && totals[j + 1].ProjectName == r.ProjectName) j++;
+                if (j > i) merges.Add($"A{row}:A{j + 3}");
+                sb.Append(CellInline($"A{row}", r.ProjectName, 3));
+            }
+            sb.Append(CellInline($"B{row}", r.ProcessName, 3));
+            sb.Append($"<c r=\"C{row}\" s=\"3\"><v>{r.Quantity}</v></c>");
             sb.Append("</row>");
         }
-        sb.Append("</sheetData></worksheet>");
+        sb.Append("</sheetData>");
+        if (merges.Count > 0)
+        {
+            sb.Append($"<mergeCells count=\"{merges.Count}\">");
+            foreach (string m in merges) sb.Append($"<mergeCell ref=\"{m}\"/>");
+            sb.Append("</mergeCells>");
+        }
+        sb.Append("</worksheet>");
         WriteEntry(zip, "xl/worksheets/sheet1.xml", sb.ToString());
+        return totals.Count;
     }
 
     private static string CellInline(string @ref, string text, int style)
         => $"<c r=\"{@ref}\" t=\"inlineStr\" s=\"{style}\"><is><t xml:space=\"preserve\">{Escape(text)}</t></is></c>";
+
+    // 估算文本显示宽度：半角 1，全角/中文 2
+    private static double DisplayWidth(string? s)
+    {
+        double w = 0;
+        foreach (char c in s ?? string.Empty)
+            w += c <= 0x7F ? 1 : 2;
+        return w;
+    }
 
     private static string BuildStyles()
     {
@@ -112,11 +170,14 @@ public static class ExcelExporter
             "</fills>" +
             "<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>" +
             "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-            "<cellXfs count=\"3\">" +
+            "<cellXfs count=\"4\">" +
             "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
             "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>" +
             "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\">" +
             "<alignment horizontal=\"center\" vertical=\"center\"/>" +
+            "</xf>" +
+            "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyAlignment=\"1\">" +
+            "<alignment vertical=\"center\"/>" +
             "</xf>" +
             "</cellXfs>" +
             "</styleSheet>";

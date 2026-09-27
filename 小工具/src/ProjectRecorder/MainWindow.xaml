@@ -2,11 +2,12 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:conv="clr-namespace:ProjectRecorder.Converters"
-        Title="小工具" Height="640" Width="860" MinWidth="760" MinHeight="560"
+        xmlns:panels="clr-namespace:ProjectRecorder.Panels"
+        Title="" Height="660" Width="980" MinWidth="860" MinHeight="580"
         WindowStartupLocation="CenterScreen" Background="#F8FAFC" Icon="app.ico">
     <Window.Resources>
-        <conv:BytesToImageConverter x:Key="BytesToImage"/>
-        <conv:BytesToVisibilityConverter x:Key="BytesToVisibility"/>
+        <conv:StepImageToThumbConverter x:Key="StepImageThumb"/>
+        <conv:NotEmptyToVisibilityConverter x:Key="ImagesToVisibility"/>
     </Window.Resources>
     <Grid Margin="14">
         <Grid.RowDefinitions>
@@ -14,279 +15,710 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 视图0：主界面 -->
-        <Grid x:Name="ViewHome" Grid.Row="0">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="320">
-                <Button x:Name="BtnGoProjects" Content="项目管理" Height="58" FontSize="18" Style="{StaticResource BtnPrimary}" Click="BtnGoProjects_Click"/>
-                <Button x:Name="BtnGoStats" Content="工作量统计" Height="58" FontSize="18" Margin="0,14,0,0" Style="{StaticResource BtnGhost}" Click="BtnGoStats_Click"/>
-            </StackPanel>
-        </Grid>
+        <!-- 主体：左侧常驻（通用模块 + 项目列表），右侧为选中项的面板 -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- 视图1：项目列表（只显示项目名称；点右上角添加后弹窗输入） -->
-        <Grid x:Name="ViewProjects" Grid.Row="0" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+            <!-- 左：通用模块 + 项目列表（右键排序/删除） -->
+            <Border Grid.Column="0" Background="White" BorderBrush="#E5E7EB"
+                    BorderThickness="1" CornerRadius="10">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button x:Name="BtnBackHome" Content="← 主界面" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnBackHome_Click"/>
-                <TextBlock Grid.Column="1" Text="项目列表" Style="{StaticResource ViewTitle}"/>
-                <Button x:Name="BtnAdd" Grid.Column="2" Content="＋ 添加" Width="90" Style="{StaticResource BtnPrimary}" Click="BtnAdd_Click"/>
-            </Grid>
+                    <!-- 通用模块：独立入口，不在项目列表内 -->
+                    <RadioButton x:Name="BtnGeneral" Grid.Row="0" Content="通用"
+                                 GroupName="SideModule" Style="{StaticResource TabButton}"
+                                 HorizontalAlignment="Stretch" Margin="8,8,8,4"
+                                 Click="BtnGeneral_Click"/>
 
-            <ListBox x:Name="LstProjects" Grid.Row="1" SelectionMode="Single"
-                     Style="{StaticResource CleanList}"
-                     MouseDoubleClick="LstProjects_MouseDoubleClick"
-                     PreviewMouseRightButtonDown="LstProjects_RightButtonDown"
-                     PreviewMouseRightButtonUp="ListBlankUp"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.ContextMenu>
-                    <ContextMenu>
-                        <MenuItem Header="删除该项目" Click="MenuDeleteProject_Click"/>
-                    </ContextMenu>
-                </ListBox.ContextMenu>
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Width="150" Height="92" Margin="8" Style="{StaticResource CardBorder}">
-                            <TextBlock Text="{Binding}" FontSize="24" FontWeight="Bold" Foreground="#1F2937"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </Grid>
-
-        <!-- 视图2：工序列表（点进项目后；首次进入空，右上角添加工序；只列工序名称） -->
-        <Grid x:Name="ViewProcessList" Grid.Row="0" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button x:Name="BtnBackToProjects" Content="← 返回" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnBackToProjects_Click"/>
-                <TextBlock x:Name="TxtProcessListTitle" Grid.Column="1" Text="项目" Style="{StaticResource ViewTitle}"/>
-                <Button x:Name="BtnAddProcess" Grid.Column="2" Content="＋ 添加工序" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnAddProcess_Click"/>
-            </Grid>
-
-            <Grid Grid.Row="1">
-                <TextBlock x:Name="TxtProcessEmpty" Text="暂无工序，请点击右上角“＋ 添加工序”"
-                           Style="{StaticResource EmptyText}" Visibility="Collapsed"/>
-                <ListBox x:Name="LstProcesses" SelectionMode="Single"
-                         Style="{StaticResource CleanList}"
-                         MouseDoubleClick="LstProcesses_MouseDoubleClick"
-                         PreviewMouseRightButtonDown="LstProcesses_RightButtonDown"
-                         PreviewMouseRightButtonUp="ListBlankUp"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="删除该工序" Click="MenuDeleteProcess_Click"/>
-                        </ContextMenu>
-                    </ListBox.ContextMenu>
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal"/>
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Width="170" Height="82" Margin="8" Style="{StaticResource CardBorder}">
-                                <TextBlock Text="{Binding ProcessName}" FontSize="19" FontWeight="Bold" Foreground="#1F2937"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Grid>
-        </Grid>
-
-        <!-- 视图3：工序详情（干净查看；双击编辑，右键排序/删除） -->
-        <Grid x:Name="ViewFlow" Grid.Row="0" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button x:Name="BtnBackToProcessList" Content="← 返回" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnBackToProcessList_Click"/>
-                <TextBlock x:Name="TxtFlowTitle" Grid.Column="1" Text="工序" Style="{StaticResource ViewTitle}"/>
-                <Button x:Name="BtnAddStep" Grid.Column="2" Content="＋ 添加操作步骤" Width="130" Style="{StaticResource BtnPrimary}" Click="BtnAddStep_Click"/>
-            </Grid>
-
-            <Grid Grid.Row="1">
-                <TextBlock x:Name="TxtStepEmpty" Text="暂无步骤，请点击右上角“＋ 添加操作步骤”"
-                           Style="{StaticResource EmptyText}" Visibility="Collapsed"/>
-                <ListBox x:Name="LstSteps" SelectionMode="Single"
-                         Style="{StaticResource CleanList}"
-                         PreviewMouseRightButtonDown="LstSteps_RightButtonDown"
-                         PreviewMouseRightButtonUp="ListBlankUp">
-                    <ListBox.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="删除该步骤" Click="MenuStepDelete_Click"/>
-                        </ContextMenu>
-                    </ListBox.ContextMenu>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="2,4,8,4" Padding="12" Style="{StaticResource CardBorder}">
-                                <StackPanel>
-                                    <TextBlock FontSize="15" FontWeight="Bold" Foreground="#111827">
-                                        <Run Text="第"/><Run Text="{Binding Order}"/><Run Text="步"/>
-                                    </TextBlock>
-                                    <TextBox Text="{Binding Text, Mode=OneWay}" FontSize="15" TextWrapping="Wrap"
-                                             IsReadOnly="True" BorderThickness="0" Background="Transparent"
-                                             Padding="0" Margin="0,4,0,0" Cursor="IBeam" Foreground="#1F2937"/>
-                                    <Image Source="{Binding ImageData, Converter={StaticResource BytesToImage}}"
-                                           Visibility="{Binding ImageData, Converter={StaticResource BytesToVisibility}}"
-                                           MaxHeight="240" Stretch="Uniform" HorizontalAlignment="Left"
-                                           Margin="0,8,0,0" Cursor="Hand"
-                                           MouseLeftButtonUp="StepImage_Click" ToolTip="点击放大查看"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Grid>
-        </Grid>
-
-        <!-- 视图4：工作量统计列表（自动同步项目管理，机台操作作为最后一个） -->
-        <Grid x:Name="ViewWorkloadList" Grid.Row="0" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button x:Name="BtnBackHomeFromWork" Content="← 主界面" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnBackHomeFromWork_Click"/>
-                <TextBlock Grid.Column="1" Text="工作量统计" Style="{StaticResource ViewTitle}"/>
-                <Button x:Name="BtnExport" Grid.Column="2" Content="导 出" Width="90" Style="{StaticResource BtnPrimary}" Click="BtnExport_Click"/>
-            </Grid>
-
-            <ListBox x:Name="LstWorkProjects" Grid.Row="1" SelectionMode="Single"
-                     Style="{StaticResource CleanList}"
-                     MouseDoubleClick="LstWorkProjects_MouseDoubleClick"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Width="150" Height="92" Margin="8" Style="{StaticResource CardBorder}">
-                            <TextBlock Text="{Binding}" FontSize="24" FontWeight="Bold" Foreground="#1F2937"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </Grid>
-
-        <!-- 视图5：工作量明细（工序卡片 + 快捷加数） -->
-        <Grid x:Name="ViewWorkloadDetail" Grid.Row="0" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="0" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Button x:Name="BtnBackToWorkload" Content="← 返回" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnBackToWorkload_Click"/>
-                <TextBlock x:Name="TxtWorkloadTitle" Grid.Column="1" Text="工作量" Style="{StaticResource ViewTitle}"/>
-                <Button x:Name="BtnAddWProcess" Grid.Column="2" Content="＋ 添加工序" Width="110" Style="{StaticResource BtnPrimary}" Click="BtnAddWProcess_Click"/>
-            </Grid>
-
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10" VerticalAlignment="Center">
-                <TextBlock Text="日期：" FontSize="14" FontWeight="Bold" Foreground="#374151" VerticalAlignment="Center"/>
-                <Button x:Name="BtnPickDate" Width="150" Height="30" Style="{StaticResource BtnGhost}" Click="BtnPickDate_Click"/>
-                <Popup x:Name="PopCalendar" PlacementTarget="{Binding ElementName=BtnPickDate}" Placement="Bottom"
-                       StaysOpen="False">
-                    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1" CornerRadius="6" Padding="6">
-                        <Calendar x:Name="CalWork" SelectionMode="SingleDate" SelectedDatesChanged="CalWork_SelectedDatesChanged"/>
+                    <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="12,10">
+                        <TextBlock Text="项目" FontSize="14" FontWeight="Bold" Foreground="#111827"/>
                     </Border>
-                </Popup>
-                <TextBlock x:Name="TxtWSummary" Text="累计完成：0" FontSize="15" FontWeight="Bold" Foreground="#1D4ED8"
-                           VerticalAlignment="Center" Margin="20,0,0,0"/>
-            </StackPanel>
 
-            <Grid Grid.Row="2">
-                <TextBlock x:Name="TxtWProcessEmpty" Text="暂无工序，请点击右上角“＋ 添加工序”"
-                           Style="{StaticResource EmptyText}" Visibility="Collapsed"/>
-                <ListBox x:Name="LstWorkProcess" SelectionMode="Single"
-                         Style="{StaticResource CleanList}"
-                         PreviewMouseRightButtonDown="LstWorkProcess_RightButtonDown"
-                         PreviewMouseRightButtonUp="ListBlankUp">
-                    <ListBox.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="上移" Click="MenuWProcessUp_Click"/>
-                            <MenuItem Header="下移" Click="MenuWProcessDown_Click"/>
-                            <MenuItem Header="删除该工序" Click="MenuDeleteWProcess_Click"/>
-                        </ContextMenu>
-                    </ListBox.ContextMenu>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Margin="2,5,8,5" Padding="12,10" Style="{StaticResource CardBorder}">
+                    <Grid Grid.Row="2">
+                        <TextBlock x:Name="TxtProjectEmpty" Text="暂无项目，点下方“＋ 添加项目”"
+                                   Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                   Margin="10" Visibility="Collapsed"/>
+                        <ListBox x:Name="LstProjects" SelectionMode="Single"
+                                 Style="{StaticResource CleanList}" Padding="8"
+                                 SelectionChanged="LstProjects_SelectionChanged"
+                                 PreviewMouseRightButtonDown="LstProjects_RightButtonDown"
+                                 PreviewMouseRightButtonUp="ListBlankUp"
+                                 ScrollViewer.CanContentScroll="False"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="上移" Click="MenuMoveProjectUp_Click"/>
+                                    <MenuItem Header="下移" Click="MenuMoveProjectDown_Click"/>
+                                    <MenuItem Header="删除该项目" Click="MenuDeleteProject_Click"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,3" Padding="10,8" Style="{StaticResource CardBorder}">
+                                        <TextBlock Text="{Binding}" FontSize="14" FontWeight="Bold" Foreground="#1F2937"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <Button x:Name="BtnAddProject" Grid.Row="3" Content="＋ 添加项目" Height="34" Margin="10"
+                            Style="{StaticResource BtnGhost}" Click="BtnAdd_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- 右：项目面板 -->
+            <Border Grid.Column="2" Background="White" BorderBrush="#E5E7EB"
+                    BorderThickness="1" CornerRadius="10">
+                <Grid>
+                    <TextBlock x:Name="TxtNoProject" Text="请从左侧选择项目" Style="{StaticResource EmptyText}"/>
+
+                    <Grid x:Name="PanelProject" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- 面板头：功能入口（项目：工序/工作量/快捷路径；通用：工作量/导出/快捷路径） -->
+                        <Border Grid.Row="0" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="14,10">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="BtnTabProcess" Content="工 序" Margin="0"
+                                             GroupName="ProjectTabs" Style="{StaticResource TabButton}"
+                                             Click="TabProcess_Click"/>
+                                <RadioButton x:Name="BtnTabWorkload" Content="工作量" Margin="8,0,0,0"
+                                             GroupName="ProjectTabs" Style="{StaticResource TabButton}"
+                                             Click="TabWorkload_Click"/>
+                                <RadioButton x:Name="BtnTabShortcuts" Content="快捷路径" Margin="8,0,0,0"
+                                             GroupName="ProjectTabs" Style="{StaticResource TabButton}"
+                                             Click="TabShortcuts_Click" Visibility="Collapsed"/>
+                                <RadioButton x:Name="BtnGTabWorkload" Content="工作量" Margin="0"
+                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
+                                             Click="GTabWorkload_Click" Visibility="Collapsed"/>
+                                <RadioButton x:Name="BtnGTabExport" Content="导 出" Margin="8,0,0,0"
+                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
+                                             Click="GTabExport_Click" Visibility="Collapsed"/>
+                                <RadioButton x:Name="BtnGTabShortcuts" Content="快捷路径" Margin="8,0,0,0"
+                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
+                                             Click="GTabShortcuts_Click" Visibility="Collapsed"/>
+                                <RadioButton x:Name="BtnGTabMindMap" Content="思维导图" Margin="8,0,0,0"
+                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
+                                             Click="GTabMindMap_Click" Visibility="Collapsed"/>
+                                <RadioButton x:Name="BtnGTabNote" Content="笔 记" Margin="8,0,0,0"
+                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
+                                             Click="GTabNote_Click" Visibility="Collapsed"/>
+                                <RadioButton x:Name="BtnGTabFiles" Content="加密文件" Margin="8,0,0,0"
+                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
+                                             Click="GTabFiles_Click" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 工序标签页：左列工序，右列步骤详情 -->
+                        <Grid x:Name="ViewProcessTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="210"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0" Margin="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <TextBlock Text="工序列表" FontSize="13" FontWeight="Bold" Foreground="#374151"
+                                               VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnAddProcess" Content="＋ 添加工序"
+                                            HorizontalAlignment="Right" Style="{StaticResource BtnPrimary}"
+                                            Click="BtnAddProcess_Click"/>
+                                </Grid>
+                                <Grid Grid.Row="1">
+                                    <TextBlock x:Name="TxtProcessEmpty" Text="暂无工序，点上方“＋ 添加工序”"
+                                               Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                               Margin="10" Visibility="Collapsed"/>
+                                    <ListBox x:Name="LstProcesses" SelectionMode="Single"
+                                             Style="{StaticResource CleanList}"
+                                             SelectionChanged="LstProcesses_SelectionChanged"
+                                             PreviewMouseRightButtonDown="LstProcesses_RightButtonDown"
+                                             PreviewMouseRightButtonUp="ListBlankUp"
+                                             ScrollViewer.CanContentScroll="False"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="上移" Click="MenuMoveProcessUp_Click"/>
+                                                <MenuItem Header="下移" Click="MenuMoveProcessDown_Click"/>
+                                                <MenuItem Header="删除该工序" Click="MenuDeleteProcess_Click"/>
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,3" Padding="10,10" Style="{StaticResource CardBorder}">
+                                                    <TextBlock Text="{Binding ProcessName}" FontSize="14" FontWeight="Bold"
+                                                               Foreground="#1F2937" TextWrapping="Wrap"/>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </Grid>
+
+                            <Border Grid.Column="1" BorderBrush="#E5E7EB" BorderThickness="1,0,0,0">
                                 <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Process.ProcessName}" FontSize="17" FontWeight="Bold" Foreground="#111827"/>
-                                        <TextBlock FontSize="13" Foreground="#6B7280" Margin="0,4,0,0">
-                                            <Run Text="累计："/><Run Text="{Binding TotalQty}"/>
-                                        </TextBlock>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button Content="−" Width="36" Height="32" Style="{StaticResource BtnGhost}" Click="BtnWCardMinus_Click"/>
-                                        <TextBox x:Name="QtyBox" Text="1" Width="70" Height="32" Margin="6,0,0,0"
-                                                 VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                                                 PreviewTextInput="TxtQty_PreviewTextInput"/>
-                                        <Button Content="＋" Width="36" Height="32" Margin="6,0,0,0" Style="{StaticResource BtnGhost}" Click="BtnWCardPlus_Click"/>
-                                        <Button Content="添 加" Width="90" Height="32" Margin="8,0,0,0" Style="{StaticResource BtnPrimary}" Click="BtnWCardSave_Click"/>
-                                    </StackPanel>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0" Margin="14,10">
+                                        <TextBlock x:Name="TxtFlowTitle" Text="操作步骤" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#374151" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <Button x:Name="BtnAddStep" Content="＋ 添加操作步骤" HorizontalAlignment="Right"
+                                                Style="{StaticResource BtnPrimary}" Click="BtnAddStep_Click"/>
+                                    </Grid>
+                                    <Grid Grid.Row="1" Margin="12,0,12,12">
+                                        <TextBlock x:Name="TxtStepEmpty" Text="暂无步骤" Style="{StaticResource EmptyText}"
+                                                   Visibility="Collapsed"/>
+                                        <ListBox x:Name="LstSteps" SelectionMode="Single"
+                                                 Style="{StaticResource CleanList}"
+                                                 PreviewMouseRightButtonDown="LstSteps_RightButtonDown"
+                                                 PreviewMouseRightButtonUp="ListBlankUp"
+                                                 ScrollViewer.CanContentScroll="False"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="上移" Click="MenuStepUp_Click"/>
+                                                    <MenuItem Header="下移" Click="MenuStepDown_Click"/>
+                                                    <MenuItem Header="删除该步骤" Click="MenuStepDelete_Click"/>
+                                                </ContextMenu>
+                                            </ListBox.ContextMenu>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="2,4,8,4" Padding="12" Style="{StaticResource CardBorder}">
+                                                        <StackPanel>
+                                                            <TextBlock FontSize="15" FontWeight="Bold" Foreground="#111827">
+                                                                <Run Text="第"/><Run Text="{Binding Order}"/><Run Text="步"/>
+                                                            </TextBlock>
+                                                            <TextBox Text="{Binding Text, Mode=OneWay}" FontSize="15"
+                                                                     TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0"
+                                                                     Background="Transparent" Padding="0" Margin="0,4,0,0"
+                                                                     Cursor="IBeam" Foreground="#1F2937"/>
+                                                            <ItemsControl ItemsSource="{Binding Images}"
+                                                                          Visibility="{Binding Images, Converter={StaticResource ImagesToVisibility}}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <Image Source="{Binding Converter={StaticResource StepImageThumb}}"
+                                                                               MaxHeight="200" Stretch="Uniform" StretchDirection="DownOnly"
+                                                                               HorizontalAlignment="Left" Margin="0,8,0,0" Cursor="Hand"
+                                                                               MouseLeftButtonUp="StepImage_Click" ToolTip="点击放大查看"/>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
                                 </Grid>
                             </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Grid>
+                        </Grid>
 
+                        <!-- 工作量标签页：自动记当前班次 + 快捷计数卡片 -->
+                        <Grid x:Name="ViewWorkloadTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="14,10">
+                                <TextBlock x:Name="TxtWorkShift" FontSize="14" Foreground="#374151"
+                                           VerticalAlignment="Center"/>
+                                <Button x:Name="BtnAddWProcess" Content="＋ 添加工序" HorizontalAlignment="Right"
+                                        Style="{StaticResource BtnPrimary}" Click="BtnAddWProcess_Click"/>
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="12,0,12,12">
+                                <TextBlock x:Name="TxtWProcessEmpty"
+                                           Text="暂无工序"
+                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                           Margin="20" Visibility="Collapsed"/>
+                                <ListBox x:Name="LstWorkProcess" SelectionMode="Single"
+                                         Style="{StaticResource CleanList}"
+                                         PreviewMouseRightButtonDown="LstWorkProcess_RightButtonDown"
+                                         PreviewMouseRightButtonUp="ListBlankUp"
+                                         ScrollViewer.CanContentScroll="False"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <panels:AdaptiveWrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                    <ListBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="上移" Click="MenuWProcessUp_Click"/>
+                                            <MenuItem Header="下移" Click="MenuWProcessDown_Click"/>
+                                            <MenuItem Header="删除该工序" Click="MenuDeleteWProcess_Click"/>
+                                        </ContextMenu>
+                                    </ListBox.ContextMenu>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="160" Height="180" Margin="0,8" Padding="12,10"
+                                                    Style="{StaticResource CardBorder}">
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Process.ProcessName}" FontSize="16"
+                                                               FontWeight="Bold" Foreground="#111827"
+                                                               HorizontalAlignment="Center" TextAlignment="Center"
+                                                               TextWrapping="Wrap" MaxHeight="46" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="13" Foreground="#6B7280" Margin="0,4,0,0"
+                                                               HorizontalAlignment="Center">
+                                                        <Run Text="本班："/><Run Text="{Binding ShiftQty}"/>
+                                                    </TextBlock>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                                Margin="0,10,0,0">
+                                                        <Button Content="-" Width="30" Height="30"
+                                                                Style="{StaticResource BtnStep}"
+                                                                Click="BtnWCardMinus_Click"/>
+                                                        <TextBox x:Name="QtyBox" Text="1" Width="48" Height="30" Margin="6,0,0,0"
+                                                                 FontSize="15" TextAlignment="Center"
+                                                                 VerticalContentAlignment="Center"
+                                                                 PreviewTextInput="TxtQty_PreviewTextInput"/>
+                                                        <Button Content="+" Width="30" Height="30" Margin="6,0,0,0"
+                                                                Style="{StaticResource BtnStep}"
+                                                                Click="BtnWCardPlus_Click"/>
+                                                    </StackPanel>
+                                                    <Button Content="添 加" Height="30" Margin="0,8,0,0"
+                                                            Style="{StaticResource BtnPrimary}" Click="BtnWCardSave_Click"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 通用入口：导出合计 Excel -->
+                        <Grid x:Name="ViewExportTab" Grid.Row="1" Visibility="Collapsed">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="导出工作量合计" FontSize="16" FontWeight="Bold" Foreground="#111827"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="默认导出本班次，选日期后导出该日期合计" FontSize="12"
+                                           Foreground="#6B7280" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+                                    <Button x:Name="ExpPrevDay" Content="◀" Width="30" Height="30"
+                                            Style="{StaticResource BtnStep}" Click="ExpPrevDay_Click"/>
+                                    <Button x:Name="ExpPickDate" Width="130" Height="30" Margin="6,0,0,0"
+                                            Style="{StaticResource BtnGhost}" Click="ExpPickDate_Click"/>
+                                    <Popup x:Name="ExpPopCalendar" PlacementTarget="{Binding ElementName=ExpPickDate}"
+                                           Placement="Bottom" StaysOpen="False">
+                                        <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1"
+                                                CornerRadius="6" Padding="6">
+                                            <Calendar x:Name="ExpCal" SelectionMode="SingleDate"
+                                                      SelectedDatesChanged="ExpCal_SelectedDatesChanged"/>
+                                        </Border>
+                                    </Popup>
+                                    <Button x:Name="ExpNextDay" Content="▶" Width="30" Height="30" Margin="6,0,0,0"
+                                            Style="{StaticResource BtnStep}" Click="ExpNextDay_Click"/>
+                                </StackPanel>
+                                <Button x:Name="BtnExport" Content="导 出 Excel" Width="150" Height="36" Margin="0,20,0,0"
+                                        Style="{StaticResource BtnPrimary}" Click="BtnExport_Click"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 通用入口：快捷路径（左列文件夹单击打开，右列网址单击复制） -->
+                        <Grid x:Name="ViewShortcutTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="14,10">
+                                <TextBlock x:Name="TxtShortcutHint"
+                                           Text="文件夹：单击用资源管理器打开；网址：单击复制到剪贴板（不打开浏览器）"
+                                           FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" Margin="0,0,120,0"/>
+                                <Button x:Name="BtnAddShortcut" Content="＋ 添加" HorizontalAlignment="Right"
+                                        Style="{StaticResource BtnPrimary}" Click="BtnAddShortcut_Click"/>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="12,0,12,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition x:Name="ColShortcutGap" Width="14"/>
+                                    <ColumnDefinition x:Name="ColShortcutUrl" Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 文件夹 -->
+                                <Grid Grid.Column="0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                                        <TextBlock Text="文件夹（单击打开）" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#374151" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Grid.Row="1">
+                                        <TextBlock x:Name="TxtFolderShortcutEmpty" Text="暂无文件夹快捷方式"
+                                                   Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                                   Margin="10" Visibility="Collapsed"/>
+                                        <ListBox x:Name="LstFolderShortcuts" SelectionMode="Single"
+                                                 Style="{StaticResource CleanList}"
+                                                 PreviewMouseRightButtonDown="LstShortcuts_RightButtonDown"
+                                                 PreviewMouseRightButtonUp="ListBlankUp"
+                                                 ScrollViewer.CanContentScroll="False"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="删除该文件夹" Click="MenuDeleteFolderShortcut_Click"/>
+                                                </ContextMenu>
+                                            </ListBox.ContextMenu>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,3" Padding="10,8"
+                                                            Style="{StaticResource CardBorder}"
+                                                            Cursor="Hand" ToolTip="单击用资源管理器打开"
+                                                            MouseLeftButtonUp="ShortcutFolder_Click">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontSize="14"
+                                                                       FontWeight="Bold" Foreground="#1F2937"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding FolderPath}" FontSize="11"
+                                                                       Foreground="#6B7280"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
+                                </Grid>
+
+                                <!-- 网址（仅通用模块显示） -->
+                                <Grid x:Name="UrlShortcutPanel" Grid.Column="2">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                                        <TextBlock Text="网址（单击复制）" FontSize="13" FontWeight="Bold"
+                                                   Foreground="#374151" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <Grid Grid.Row="1">
+                                        <TextBlock x:Name="TxtUrlShortcutEmpty" Text="暂无网址快捷方式"
+                                                   Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                                   Margin="10" Visibility="Collapsed"/>
+                                        <ListBox x:Name="LstUrlShortcuts" SelectionMode="Single"
+                                                 Style="{StaticResource CleanList}"
+                                                 PreviewMouseRightButtonDown="LstShortcuts_RightButtonDown"
+                                                 PreviewMouseRightButtonUp="ListBlankUp"
+                                                 ScrollViewer.CanContentScroll="False"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="复制网址" Click="MenuCopyUrlShortcut_Click"/>
+                                                    <MenuItem Header="删除该网址" Click="MenuDeleteUrlShortcut_Click"/>
+                                                </ContextMenu>
+                                            </ListBox.ContextMenu>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,3" Padding="10,8"
+                                                            Style="{StaticResource CardBorder}"
+                                                            Cursor="Hand" ToolTip="单击复制网址"
+                                                            MouseLeftButtonUp="ShortcutUrl_Click">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontSize="14"
+                                                                       FontWeight="Bold" Foreground="#1F2937"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding FolderPath}" FontSize="11"
+                                                                       Foreground="#2563EB"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Grid>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 通用入口：思维导图（全宽画布，顶部下拉切换导图） -->
+                        <Grid x:Name="ViewMindMapTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="14,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="BtnMindMapSwitch" Height="30" MinWidth="110"
+                                            Style="{StaticResource BtnGhost}" Click="BtnMindMapSwitch_Click"
+                                            ToolTip="切换 / 新建 / 重命名 / 删除思维导图">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock x:Name="TxtMindMapTitle" Text="思维导图" FontWeight="Bold"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="180"/>
+                                            <TextBlock Text=" ▾" Foreground="#6B7280"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="BtnMindMapHelp" Content="操作教程" Height="30" Margin="8,0,0,0"
+                                            Style="{StaticResource BtnGhost}" Click="BtnMindMapHelp_Click"
+                                            ToolTip="查看思维导图操作教程"/>
+                                    <Popup x:Name="MindPop" PlacementTarget="{Binding ElementName=BtnMindMapSwitch}"
+                                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                                           PopupAnimation="Fade">
+                                    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1"
+                                            CornerRadius="8" Padding="8" Margin="0,4,4,0" MinWidth="250">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.15"/>
+                                        </Border.Effect>
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock x:Name="TxtMindPopEmpty" Grid.Row="0"
+                                                       Text="还没有导图，点右下角“＋ 新建”" FontSize="12"
+                                                       Foreground="#9CA3AF" Margin="4,6" Visibility="Collapsed"/>
+                                            <ListBox x:Name="LstMindMaps" Grid.Row="0" MaxHeight="260"
+                                                     SelectionMode="Single" Style="{StaticResource CleanList}"
+                                                     SelectionChanged="LstMindMaps_SelectionChanged"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Margin="0,2" Padding="10,8"
+                                                                Style="{StaticResource CardBorder}">
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Name}" FontSize="14"
+                                                                           FontWeight="Bold" Foreground="#1F2937"
+                                                                           TextTrimming="CharacterEllipsis"/>
+                                                                <TextBlock FontSize="11" Foreground="#6B7280"
+                                                                           Margin="0,2,0,0">
+                                                                    <Run Text="{Binding NodeCount, Mode=OneWay}"/><Run Text=" 个节点 · "/><Run Text="{Binding UpdatedTime, Mode=OneWay, StringFormat=MM-dd HH:mm}"/>
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal"
+                                                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                                                <Button Content="＋ 新建" Height="28"
+                                                        Style="{StaticResource BtnPrimary}"
+                                                        Click="BtnAddMindMap_Click"/>
+                                                <Button Content="重命名" Height="28" Margin="8,0,0,0"
+                                                        Style="{StaticResource BtnGhost}"
+                                                        Click="MenuRenameMindMap_Click"/>
+                                                <Button Content="删除" Height="28" Margin="8,0,0,0"
+                                                        Style="{StaticResource BtnGhost}"
+                                                        Click="MenuDeleteMindMap_Click"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Popup>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="BtnMindExport" Content="导 出 ▾" Height="30"
+                                            Style="{StaticResource BtnPrimary}" Click="BtnMindExport_Click"
+                                            ToolTip="导出图片（PNG）或文本大纲（TXT，适合给 AI）"/>
+                                    <Button x:Name="BtnMindZoomOut" Content="－" Width="30" Height="30"
+                                            Margin="8,0,0,0" Style="{StaticResource BtnStep}"
+                                            Click="BtnMindZoomOut_Click"/>
+                                    <TextBlock x:Name="TxtMindZoom" Text="100%" Width="46" FontSize="12"
+                                               Foreground="#6B7280" TextAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnMindZoomIn" Content="＋" Width="30" Height="30"
+                                            Style="{StaticResource BtnStep}" Click="BtnMindZoomIn_Click"/>
+                                    <Button x:Name="BtnMindFit" Content="适应窗口" Height="30" Margin="8,0,0,0"
+                                            Style="{StaticResource BtnGhost}" Click="BtnMindFit_Click"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="12,0,12,12">
+                                <Border x:Name="MindCanvasBorder" Visibility="Collapsed"
+                                        BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="10"
+                                        ClipToBounds="True">
+                                    <panels:MindMapView x:Name="MindView"/>
+                                </Border>
+                                <StackPanel x:Name="MindEmptyPanel" HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="还没有思维导图" Style="{StaticResource EmptyText}"/>
+                                    <Button Content="＋ 新建思维导图" Width="160" Height="36" Margin="0,14,0,0"
+                                            Style="{StaticResource BtnPrimary}" Click="BtnAddMindMap_Click"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 通用入口：笔记（左列笔记列表，右侧标题 + 正文编辑，自动保存） -->
+                        <Grid x:Name="ViewNoteTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="210"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0" Margin="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <TextBlock Text="笔记列表" FontSize="13" FontWeight="Bold" Foreground="#374151"
+                                               VerticalAlignment="Center"/>
+                                    <Button x:Name="BtnAddNote" Content="＋ 新建笔记"
+                                            HorizontalAlignment="Right" Style="{StaticResource BtnPrimary}"
+                                            Click="BtnAddNote_Click"/>
+                                </Grid>
+                                <Grid Grid.Row="1">
+                                    <TextBlock x:Name="TxtNoteEmpty" Text="暂无笔记，点上方“＋ 新建笔记”"
+                                               Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                               Margin="10" Visibility="Collapsed"/>
+                                    <ListBox x:Name="LstNotes" SelectionMode="Single"
+                                             Style="{StaticResource CleanList}"
+                                             SelectionChanged="LstNotes_SelectionChanged"
+                                             PreviewMouseRightButtonDown="LstNotes_RightButtonDown"
+                                             PreviewMouseRightButtonUp="ListBlankUp"
+                                             ScrollViewer.CanContentScroll="False"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                        <ListBox.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="删除该笔记" Click="MenuDeleteNote_Click"/>
+                                            </ContextMenu>
+                                        </ListBox.ContextMenu>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,3" Padding="10,8" Style="{StaticResource CardBorder}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DisplayTitle}" FontSize="14"
+                                                                   FontWeight="Bold" Foreground="#1F2937"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                        <TextBlock FontSize="11" Foreground="#6B7280" Margin="0,2,0,0">
+                                                            <Run Text="{Binding UpdatedTime, Mode=OneWay, StringFormat=MM-dd HH:mm}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
+                            </Grid>
+
+                            <Border Grid.Column="1" BorderBrush="#E5E7EB" BorderThickness="1,0,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid Grid.Row="0" Margin="14,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="TxtNoteTitle" Grid.Column="0" Height="32"
+                                                 FontSize="15" FontWeight="Bold" MaxLength="100"
+                                                 VerticalContentAlignment="Center"
+                                                 TextChanged="NoteText_Changed"/>
+                                        <Button x:Name="BtnDeleteNote" Grid.Column="1" Content="删 除" Height="30"
+                                                Margin="8,0,0,0" Style="{StaticResource BtnGhost}"
+                                                Click="MenuDeleteNote_Click"/>
+                                    </Grid>
+                                    <Grid Grid.Row="1" Margin="14,0,14,0">
+                                        <TextBox x:Name="TxtNoteBody" AcceptsReturn="True" TextWrapping="Wrap"
+                                                 VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto"
+                                                 Padding="8,6" TextChanged="NoteText_Changed"/>
+                                        <TextBlock x:Name="TxtNoteNoSel" Text="请从左侧选择或新建笔记"
+                                                   Style="{StaticResource EmptyText}"/>
+                                    </Grid>
+                                    <TextBlock x:Name="TxtNoteStatus" Grid.Row="2" Margin="14,4,14,8"
+                                               FontSize="11" Foreground="#9CA3AF" HorizontalAlignment="Right"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- 通用入口：加密文件（导入即加密存储，导出为解密副本） -->
+                        <Grid x:Name="ViewFileTab" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0" Margin="14,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtFileVaultInfo"
+                                               Text="加密文件：导入后 AES-256 加密存本地，绝不明文落盘；导出的是解密副本，请妥善保管"
+                                               FontSize="12" Foreground="#6B7280"
+                                               TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                                </StackPanel>
+                                <Button x:Name="BtnImportFile" Grid.Column="1" Content="＋ 导入文件"
+                                        Style="{StaticResource BtnPrimary}" Click="BtnImportFile_Click"
+                                        ToolTip="可多选；单文件上限 200MB"/>
+                            </Grid>
+                            <Grid Grid.Row="1" Margin="12,0,12,12">
+                                <TextBlock x:Name="TxtFileEmpty"
+                                           Text="暂无加密文件，点右上角“＋ 导入文件”（支持多选、任意类型）"
+                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                                           Margin="20" Visibility="Collapsed"/>
+                                <ListBox x:Name="LstEncryptedFiles" SelectionMode="Single"
+                                         Style="{StaticResource CleanList}"
+                                         PreviewMouseRightButtonDown="LstEncryptedFiles_RightButtonDown"
+                                         PreviewMouseRightButtonUp="ListBlankUp"
+                                         ScrollViewer.CanContentScroll="False"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="导出解密副本" Click="MenuExportEncryptedFile_Click"/>
+                                            <MenuItem Header="重命名" Click="MenuRenameEncryptedFile_Click"/>
+                                            <MenuItem Header="删除" Click="MenuDeleteEncryptedFile_Click"/>
+                                        </ContextMenu>
+                                    </ListBox.ContextMenu>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,3" Padding="10,8" Style="{StaticResource CardBorder}"
+                                                    ToolTip="右键：导出解密副本 / 重命名 / 删除">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="14"
+                                                               FontWeight="Bold" Foreground="#1F2937"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock FontSize="11" Foreground="#6B7280" Margin="0,2,0,0">
+                                                        <Run Text="{Binding SizeText, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding CreatedTime, Mode=OneWay, StringFormat=yyyy-MM-dd HH:mm}"/><Run Text=" 导入"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 状态栏：记住登录开关 + 无操作自动退出倒计时 -->
+        <Grid Grid.Row="1" Margin="2,8,2,0">
+            <CheckBox x:Name="ChkAutoLogin" Content="记住登录（自动登录、取消 120 秒自动退出）"
+                      FontSize="12" Foreground="#6B7280" VerticalAlignment="Center"
+                      Checked="ChkAutoLogin_Changed" Unchecked="ChkAutoLogin_Changed"
+                      ToolTip="勾选后将在用户文件夹保存加密的登录信息，下次免登录且不自动退出；取消勾选则恢复登录页与 120 秒自动退出"/>
+            <TextBlock x:Name="TxtCountdown" FontSize="12" Foreground="#6B7280"
+                       HorizontalAlignment="Right" VerticalAlignment="Center"/>
         </Grid>
     </Grid>
 </Window>

@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Input;
 using ProjectRecorder.Services;
 
 namespace ProjectRecorder;
@@ -38,28 +37,27 @@ public partial class LoginWindow : Window
 
     private void BtnLogin_Click(object sender, RoutedEventArgs e) => TryLogin();
 
-    private void PwdBox_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter) TryLogin();
-    }
-
     private void TryLogin()
     {
         string input = PwdBox.Password ?? string.Empty;
+        if (string.IsNullOrEmpty(input))
+        {
+            TxtError.Text = "请输入密码。";
+            PwdBox.Focus();
+            return;
+        }
         if (!AuthService.Verify(input))
         {
             _failCount++;
             _monitor.NotifyActivity();
+            TxtError.Text = "密码错误。";
+            PwdBox.Clear();
             if (_failCount >= 2)
             {
-                MessageBox.Show("口令错误次数过多，程序自动退出。", "登录",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 DialogResult = false;
                 Close();
                 return;
             }
-            TxtError.Text = "口令错误，拒绝访问（还剩 1 次机会）。";
-            PwdBox.Clear();
             PwdBox.Focus();
             return;
         }
@@ -67,20 +65,41 @@ public partial class LoginWindow : Window
         try
         {
             // 预读一次：验证 .dat 可解密（首次运行文件不存在则返回空）
-            _ = DataStore.LoadProjects(input);
-            _ = DataStore.LoadProcesses(input);
-            _ = DataStore.LoadWorkload(input);
-            _ = DataStore.LoadWorkloadProcesses(input);
+            // 密码不区分大小写：统一用规范形式做解密密钥
+            string password = AuthService.Normalize(input);
+            _ = DataStore.LoadProjects(password);
+            _ = DataStore.LoadProcesses(password);
+            _ = DataStore.LoadWorkload(password);
+            _ = DataStore.LoadWorkloadProcesses(password);
+            _ = DataStore.LoadShortcuts(password);
+            AuthService.SessionPassword = password;
+
+            // 勾选“保存登录”：写入用户文件夹（DPAPI 加密），下次自动登录并取消 120 秒自动退出
+            if (ChkRemember.IsChecked == true)
+            {
+                try
+                {
+                    AutoLoginStore.Enable(password);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"保存登录失败（本次仍可正常使用）：{ex.Message}", "记住登录",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            else
+            {
+                AutoLoginStore.Disable();
+            }
         }
-        catch (InvalidOperationException ex)
+        catch (InvalidOperationException)
         {
-            TxtError.Text = ex.Message;
+            TxtError.Text = "密码错误。";
             PwdBox.Clear();
             PwdBox.Focus();
             return;
         }
 
-        AuthService.SessionPassword = input;
         DialogResult = true;
         Close();
     }
