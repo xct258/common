@@ -11,8 +11,9 @@ using ProjectRecorder.Models;
 namespace ProjectRecorder.Services;
 
 /// <summary>
-/// 极简 xlsx 导出（无第三方依赖）：标题 + 表头 + 合计，冻结前两行。
-/// 只输出每个 项目/工序 的数量合计（不列明细记录）。
+/// 极简 xlsx 导出（无第三方依赖）：表一为 项目/工序 数量合计（冻结前两行），
+/// 表二为每次执行的明细（项目/工序/日期/班次/数量/执行时间，按时间排序）。
+/// 每条工作量记录的 CreatedTime 即该次执行时间。
 /// xlsx 本质是 zip 包，这里用 inline 字符串直写，避免 sharedStrings 表。
 /// </summary>
 public static class ExcelExporter
@@ -35,6 +36,13 @@ public static class ExcelExporter
         string title = shift == null
             ? $"工作量统计（{day:yyyy-MM-dd}）"
             : $"工作量统计（{day:yyyy-MM-dd} {shift}）";
+
+        // 明细：每次执行一条，按执行时间排序（含负数冲减记录）
+        var details = records
+            .OrderBy(x => x.CreatedTime)
+            .ThenBy(x => x.ProjectName)
+            .ThenBy(x => x.ProcessName)
+            .ToList();
 
         // 根据表头与内容自动计算列宽（中文按 2 个字符宽估算）
         double wProject = DisplayWidth("项目"), wProcess = DisplayWidth("工序"), wQty = DisplayWidth("数量");
@@ -69,6 +77,7 @@ public static class ExcelExporter
             "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
             "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
             "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" +
+            "<Override PartName=\"/xl/worksheets/sheet2.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" +
             "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>" +
             "</Types>");
 
@@ -81,7 +90,7 @@ public static class ExcelExporter
         WriteEntry(zip, "xl/workbook.xml",
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
             "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
-            "<sheets><sheet name=\"工作量\" sheetId=\"1\" r:id=\"rId1\"/></sheets>" +
+            "<sheets><sheet name=\"工作量\" sheetId=\"1\" r:id=\"rId1\"/><sheet name=\"明细\" sheetId=\"2\" r:id=\"rId3\"/></sheets>" +
             "</workbook>");
 
         WriteEntry(zip, "xl/_rels/workbook.xml.rels",
@@ -89,6 +98,7 @@ public static class ExcelExporter
             "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
             "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
             "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>" +
+            "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet2.xml\"/>" +
             "</Relationships>");
 
         WriteEntry(zip, "xl/styles.xml", BuildStyles());
@@ -139,7 +149,88 @@ public static class ExcelExporter
         }
         sb.Append("</worksheet>");
         WriteEntry(zip, "xl/worksheets/sheet1.xml", sb.ToString());
+
+        WriteEntry(zip, "xl/worksheets/sheet2.xml", BuildDetailSheet(title, details));
         return totals.Count;
+    }
+
+    // 表二：每次执行的明细（项目/工序/日期/班次/数量/执行时间），同样标题 + 表头 + 冻结前两行
+    private static string BuildDetailSheet(string title, List<WorkloadRecord> details)
+    {
+        string[] headers = { "项目", "工序", "日期", "班次", "数量", "执行时间" };
+        string[] widths = new string[headers.Length];
+        double[] w = new double[headers.Length];
+        for (int c = 0; c < headers.Length; c++) w[c] = DisplayWidth(headers[c]);
+        var rows = new List<string[]>();
+        foreach (var d in details)
+        {
+            string[] cells =
+            {
+                d.ProjectName,
+                d.ProcessName,
+                d.WorkDate.ToString("yyyy-MM-dd"),
+                d.Shift,
+                d.Quantity.ToString(CultureInfo.InvariantCulture),
+                d.CreatedTime.ToString("yyyy-MM-dd HH:mm:ss")
+            };
+            rows.Add(cells);
+            for (int c = 0; c < cells.Length; c++) w[c] = Math.Max(w[c], DisplayWidth(cells[c]));
+        }
+        double[] caps = { 50, 50, 14, 10, 12, 22 };
+        for (int c = 0; c < w.Length; c++)
+        {
+            w[c] = Math.Min(w[c] + 2, caps[c]);
+            widths[c] = w[c].ToString("0.#", CultureInfo.InvariantCulture);
+        }
+
+        string detailTitle = title + "（执行明细）";
+        double titleWidth = DisplayWidth(detailTitle) + 2;
+        double totalWidth = w.Sum();
+        if (totalWidth < titleWidth)
+        {
+            double add = (titleWidth - totalWidth) / w.Length + 0.1;
+            for (int c = 0; c < w.Length; c++)
+            {
+                w[c] += add;
+                widths[c] = w[c].ToString("0.#", CultureInfo.InvariantCulture);
+            }
+        }
+
+        var sb = new StringBuilder();
+        sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        sb.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        sb.Append("<sheetViews><sheetView workbookViewId=\"0\">");
+        sb.Append("<pane ySplit=\"2\" topLeftCell=\"A3\" activePane=\"bottomLeft\" state=\"frozen\"/>");
+        sb.Append("</sheetView></sheetViews>");
+        sb.Append("<cols>");
+        for (int c = 0; c < widths.Length; c++)
+            sb.Append($"<col min=\"{c + 1}\" max=\"{c + 1}\" width=\"{widths[c]}\" customWidth=\"1\"/>");
+        sb.Append("</cols><sheetData>");
+        sb.Append("<row r=\"1\"><c r=\"A1\" t=\"inlineStr\" s=\"1\"><is><t>");
+        sb.Append(Escape(detailTitle));
+        sb.Append("</t></is></c></row>");
+        sb.Append("<row r=\"2\">");
+        for (int c = 0; c < headers.Length; c++)
+            sb.Append(CellInline($"{(char)('A' + c)}2", headers[c], 2));
+        sb.Append("</row>");
+        for (int i = 0; i < rows.Count; i++)
+        {
+            int row = i + 3;
+            sb.Append($"<row r=\"{row}\">");
+            for (int c = 0; c < rows[i].Length; c++)
+            {
+                string cell = $"{(char)('A' + c)}{row}";
+                if (c == 4)
+                    sb.Append($"<c r=\"{cell}\" s=\"3\"><v>{Escape(rows[i][c])}</v></c>");
+                else
+                    sb.Append(CellInline(cell, rows[i][c], 3));
+            }
+            sb.Append("</row>");
+        }
+        sb.Append("</sheetData>");
+        sb.Append("<mergeCells count=\"1\"><mergeCell ref=\"A1:F1\"/></mergeCells>");
+        sb.Append("</worksheet>");
+        return sb.ToString();
     }
 
     private static string CellInline(string @ref, string text, int style)

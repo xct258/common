@@ -19,6 +19,16 @@ public class EncryptedFile
     /// <summary>加密前的字节数。</summary>
     [DataMember] public long Size { get; set; }
     [DataMember] public DateTime CreatedTime { get; set; } = DateTime.Now;
+    /// <summary>内容最后更新时间（在线编辑保存时刷新）；老数据缺失时回填为导入时间。</summary>
+    [DataMember] public DateTime UpdatedTime { get; set; } = DateTime.Now;
+
+    /// <summary>列表显示的时间：有过更新显示更新时间，否则显示导入时间。</summary>
+    [IgnoreDataMember]
+    public DateTime DisplayTime => UpdatedTime > CreatedTime ? UpdatedTime : CreatedTime;
+
+    /// <summary>列表显示的时间标签：“更新”/“导入”。</summary>
+    [IgnoreDataMember]
+    public string DisplayTimeLabel => UpdatedTime > CreatedTime ? "更新" : "导入";
 
     [IgnoreDataMember]
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "未命名文件" : Name.Trim();

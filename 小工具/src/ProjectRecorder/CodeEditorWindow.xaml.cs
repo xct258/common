@@ -320,6 +320,7 @@ public partial class CodeEditorWindow : Window
             byte[] bytes = EncodeCurrentText();
             DataStore.SaveEncryptedFileContent(_file.Id, bytes, _password);
             _file.Size = bytes.Length;
+            _file.UpdatedTime = DateTime.Now;
             _onSaved?.Invoke(_file);
             _dirty = false;
             TxtFileInfo.Text = $"加密存储 · {_file.SizeText} · {_languageDisplay} · {(auto ? "自动保存" : "已保存")} {DateTime.Now:HH:mm:ss}";

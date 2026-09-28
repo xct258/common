@@ -1155,6 +1155,8 @@ public partial class MainWindow : Window
         public WorkloadProcess Process { get; set; } = null!;
         /// <summary>本班次数量（换班自动从 0 重新统计）。</summary>
         public int ShiftQty { get; set; }
+        /// <summary>本班最后一次执行时间（HH:mm:ss），无记录时为“暂无”。</summary>
+        public string LastTimeText { get; set; } = "暂无";
     }
 
     private void RefreshWorkCards()
@@ -1183,14 +1185,20 @@ public partial class MainWindow : Window
         var cards = procs
             .OrderBy(x => x.Order)
             .ThenBy(x => x.CreatedTime)
-            .Select(p => new WorkCard
+            .Select(p =>
             {
-                Process = p,
-                ShiftQty = Math.Max(0, records
+                var mine = records
                     .Where(r => r.ProcessName == p.ProcessName
                                 && r.WorkDate.Date == shiftDate
                                 && r.Shift == shiftName)
-                    .Sum(r => r.Quantity))
+                    .ToList();
+                DateTime last = mine.Count == 0 ? default : mine.Max(r => r.CreatedTime);
+                return new WorkCard
+                {
+                    Process = p,
+                    ShiftQty = Math.Max(0, mine.Sum(r => r.Quantity)),
+                    LastTimeText = last == default ? "暂无" : last.ToString("HH:mm:ss")
+                };
             }).ToList();
 
         LstWorkProcess.ItemsSource = null;
@@ -1943,7 +1951,12 @@ public partial class MainWindow : Window
         }
 
         var added = new List<EncryptedFile>();
+        var overwritten = new List<string>();
+        var skipped = new List<string>();
         var errors = new List<string>();
+        DuplicateChoice? batchChoice = null;
+        var knownNames = new Dictionary<string, EncryptedFile>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in files) knownNames[f.Name] = f;
         foreach (string path in dlg.FileNames)
         {
             try
@@ -1956,15 +1969,53 @@ public partial class MainWindow : Window
                 }
 
                 byte[] data = File.ReadAllBytes(path);
+                var now = DateTime.Now;
+                if (knownNames.TryGetValue(info.Name, out EncryptedFile? existing))
+                {
+                    DuplicateChoice choice;
+                    if (batchChoice.HasValue)
+                    {
+                        choice = batchChoice.Value;
+                    }
+                    else
+                    {
+                        var dd = new DuplicateFileDialog(info.Name, _monitor) { Owner = this };
+                        if (dd.ShowDialog() != true)
+                        {
+                            skipped.Add($"{info.Name}（跳过）");
+                            continue;
+                        }
+                        choice = dd.Choice;
+                        if (dd.ApplyToAll) batchChoice = choice;
+                    }
+                    if (choice == DuplicateChoice.Skip)
+                    {
+                        skipped.Add($"{info.Name}（跳过）");
+                        continue;
+                    }
+                    if (choice == DuplicateChoice.Overwrite)
+                    {
+                        DataStore.SaveEncryptedFileContent(existing.Id, data, _password);
+                        existing.Size = info.Length;
+                        existing.OriginalName = info.Name;
+                        existing.UpdatedTime = now;
+                        overwritten.Add(info.Name);
+                        continue;
+                    }
+                    // 保留两者：走下面的新增流程
+                }
                 var item = new EncryptedFile
                 {
                     Name = info.Name,
                     OriginalName = info.Name,
-                    Size = info.Length
+                    Size = info.Length,
+                    CreatedTime = now,
+                    UpdatedTime = now
                 };
                 DataStore.SaveEncryptedFileContent(item.Id, data, _password);
                 added.Add(item);
                 files.Add(item);
+                knownNames[item.Name] = item;
             }
             catch (Exception ex)
             {
@@ -1972,7 +2023,7 @@ public partial class MainWindow : Window
             }
         }
 
-        if (added.Count > 0)
+        if (added.Count > 0 || overwritten.Count > 0)
         {
             try
             {
@@ -1980,7 +2031,8 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                // 元数据没存上：删掉刚写入的加密文件，避免留下没有记录的垃圾
+                // 元数据没存上：删掉刚写入的新加密文件，避免留下没有记录的垃圾
+                // （已覆盖的旧文件内容无法回退，仍保留新内容）
                 foreach (var item in added)
                 {
                     files.Remove(item);
@@ -1992,14 +2044,19 @@ public partial class MainWindow : Window
         }
 
         RefreshEncryptedFiles();
+        var summary = new List<string>();
+        if (added.Count > 0) summary.Add($"已加密保存 {added.Count} 个文件");
+        if (overwritten.Count > 0) summary.Add($"覆盖 {overwritten.Count} 个文件");
+        if (skipped.Count > 0) summary.Add($"跳过 {skipped.Count} 个文件");
         if (errors.Count > 0)
         {
-            MessageBox.Show("以下文件未导入：\n" + string.Join("\n", errors), "导入",
+            summary.Add("以下文件未导入：\n" + string.Join("\n", errors));
+            MessageBox.Show(string.Join("\n", summary), "导入",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        else if (added.Count > 0)
+        else if (summary.Count > 0)
         {
-            MessageBox.Show($"已加密保存 {added.Count} 个文件。", "导入",
+            MessageBox.Show(string.Join("，", summary) + "。", "导入",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }

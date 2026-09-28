@@ -309,6 +309,7 @@ public static class DataStore
             item.Name ??= string.Empty;
             item.OriginalName ??= string.Empty;
             if (item.Size < 0) item.Size = 0;
+            if (item.UpdatedTime == default) item.UpdatedTime = item.CreatedTime;
         }
         return list;
     }
