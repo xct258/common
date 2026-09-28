@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.Serialization;
 
 namespace ProjectRecorder.Models;
@@ -21,6 +22,32 @@ public class EncryptedFile
 
     [IgnoreDataMember]
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? "未命名文件" : Name.Trim();
+
+    /// <summary>AvalonEdit 高亮定义名（MarkDown/Python/Bash）；不支持在线编辑的类型返回空串。</summary>
+    [IgnoreDataMember]
+    public string EditorLanguage => GetEditorLanguage(OriginalName);
+
+    /// <summary>是否支持在新窗口中在线编辑（按原文件名的 .md/.sh/.py 后缀判断）。</summary>
+    [IgnoreDataMember]
+    public bool CanEdit => EditorLanguage.Length > 0;
+
+    public static string GetEditorLanguage(string? fileName)
+    {
+        string ext = Path.GetExtension(fileName ?? string.Empty).ToLowerInvariant();
+        switch (ext)
+        {
+            case ".md":
+            case ".markdown":
+                return "MarkDown";
+            case ".py":
+                return "Python";
+            case ".sh":
+            case ".bash":
+                return "Bash";
+            default:
+                return string.Empty;
+        }
+    }
 
     [IgnoreDataMember]
     public string SizeText => FormatSize(Size);

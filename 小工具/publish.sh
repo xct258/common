@@ -6,6 +6,8 @@ cd "$(dirname "$0")"
 export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 dotnet publish src/ProjectRecorder/ProjectRecorder.csproj -c Release -o publish
+# 第三方 DLL 已压进 exe 内嵌的 libs.zip（构建时 PackEmbeddedLibs 自动打包），散装删掉保持单文件
+rm -f publish/*.dll
 rm -f publish/*.config publish/*.pdb
 echo
 echo "发布完成：publish/小工具.exe"

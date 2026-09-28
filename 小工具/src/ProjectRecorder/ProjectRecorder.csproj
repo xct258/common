@@ -19,6 +19,21 @@
   <ItemGroup>
     <!-- 本机无 Windows 也能编译 net48（仅引用程序集，不占体积） -->
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+    <!-- 代码编辑器（语法高亮）＋ Markdown 解析：运行时 DLL 由 PackEmbeddedLibs 统一压进 libs.zip 再删掉，保持单文件发布 -->
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+    <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="System.Memory" Version="4.6.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 第三方运行时 DLL 占位：内容由 PackEmbeddedLibs 在每次编译前自动刷新（实际依赖闭包），请勿手工替换。
+         由 App 的 AssemblyResolve 运行时按需解压加载。 -->
+    <EmbeddedResource Include="Resources/libs.zip"
+                      LogicalName="ProjectRecorder.Resources.libs.zip" />
+    <!-- Shell 语法高亮（AvalonEdit 内置 md/py，不含 sh） -->
+    <EmbeddedResource Include="Resources/Bash.xshd" />
+    <!-- Python Dark+ 高亮：控制流紫色 / def·class 蓝色分桶，比内置单色更接近 VS Code -->
+    <EmbeddedResource Include="Resources/Python.xshd" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,5 +48,45 @@
   <ItemGroup>
     <Resource Include="app.ico" />
   </ItemGroup>
+
+  <!-- 第三方运行时 DLL 打包：编译前把全部 CopyLocal 的 NuGet DLL（含 Markdig 的 System.Memory 等传递依赖）
+       压成 Resources/libs.zip，再由 App 的 AssemblyResolve 按需加载；publish 脚本随后删掉散装 DLL，保持单文件。
+       用构建时实际解析出的闭包打包，升级包版本后无需手工维护 zip 内容。 -->
+  <UsingTask TaskName="ZipFiles" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputZip ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+        var seen = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        string? dir = Path.GetDirectoryName(OutputZip);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        if (File.Exists(OutputZip)) File.Delete(OutputZip);
+        using (var fs = File.Create(OutputZip))
+        using (var zip = new ZipArchive(fs, ZipArchiveMode.Create))
+        {
+          foreach (var f in Files)
+          {
+            string path = f.ItemSpec;
+            if (!path.EndsWith(".dll", System.StringComparison.OrdinalIgnoreCase)) continue;
+            if (path.EndsWith(".resources.dll", System.StringComparison.OrdinalIgnoreCase)) continue;
+            if (!File.Exists(path)) continue;
+            string name = Path.GetFileName(path);
+            if (!seen.Add(name)) continue;
+            zip.CreateEntryFromFile(path, name, CompressionLevel.Optimal);
+          }
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="PackEmbeddedLibs" BeforeTargets="CoreCompile" DependsOnTargets="ResolveAssemblyReferences">
+    <ZipFiles Files="@(ReferenceCopyLocalPaths)" OutputZip="$(MSBuildProjectDirectory)\Resources\libs.zip" />
+  </Target>
 
 </Project>

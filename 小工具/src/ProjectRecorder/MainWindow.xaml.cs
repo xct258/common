@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -21,7 +22,7 @@ namespace ProjectRecorder;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private enum GeneralTab { Workload, Export, Shortcuts, MindMap, Note, FileVault }
+    private enum GeneralTab { Home, Export, Shortcuts, MindMap, Note, FileVault }
 
     private readonly string _password;
     private List<string> _projects = new();
@@ -35,7 +36,7 @@ public partial class MainWindow : Window
     private NoteItem? _currentNote;
     private bool _noteLoading;
     private bool _notesDirty;
-    private GeneralTab _generalTab = GeneralTab.Workload;
+    private GeneralTab _generalTab = GeneralTab.Home;
     private DateTime _exportDate = DateTime.Today;
     private string _shiftKey = string.Empty;
     private bool _exportToday = true;
@@ -157,6 +158,16 @@ public partial class MainWindow : Window
 
         if (ChkAutoLogin.IsChecked == true)
         {
+            // 二次确认：避免误勾选后自动登录、取消 120 秒自动退出
+            var confirm = MessageBox.Show(
+                "确定要记住登录吗？\n勾选后下次启动将自动登录，并且不再进行 120 秒无操作自动退出。",
+                "记住登录", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.OK)
+            {
+                SetAutoLoginChecked(false);
+                return;
+            }
+
             string? password = AuthService.SessionPassword;
             if (string.IsNullOrEmpty(password))
             {
@@ -223,9 +234,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 通用已独立成模块，不再混在项目列表中
+        // 第一项固定为「通用」，其后是项目
+        var navItems = new List<string> { DataStore.FixedMachineProject };
+        navItems.AddRange(_projects);
         LstProjects.ItemsSource = null;
-        LstProjects.ItemsSource = new List<string>(_projects);
+        LstProjects.ItemsSource = navItems;
         if (keep != null && _projects.Contains(keep))
             LstProjects.SelectedItem = keep;
         TxtProjectEmpty.Visibility = _projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -233,8 +246,11 @@ public partial class MainWindow : Window
 
     private void LstProjects_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (LstProjects.SelectedItem is string project && !string.IsNullOrWhiteSpace(project))
-            OpenProject(project);
+        if (LstProjects.SelectedItem is not string name || string.IsNullOrWhiteSpace(name)) return;
+        if (name == DataStore.FixedMachineProject)
+            OpenGeneralWorkload();
+        else
+            OpenProject(name);
     }
 
     // 选中项目：右侧面板显示（切换项目不记忆上次板块，默认进工作量）
@@ -245,16 +261,12 @@ public partial class MainWindow : Window
         _currentProcessId = null;
         _exportDate = WorkloadRecord.GetShiftDate(DateTime.Now);
 
-        BtnGeneral.IsChecked = false;
+        BtnHome.IsChecked = false;
+        ProjectTabs.Visibility = Visibility.Visible;
+        PageHeader.Visibility = Visibility.Collapsed;
         BtnTabProcess.Visibility = Visibility.Visible;
         BtnTabWorkload.Visibility = Visibility.Visible;
         BtnTabShortcuts.Visibility = Visibility.Visible;
-        BtnGTabWorkload.Visibility = Visibility.Collapsed;
-        BtnGTabExport.Visibility = Visibility.Collapsed;
-        BtnGTabShortcuts.Visibility = Visibility.Collapsed;
-        BtnGTabMindMap.Visibility = Visibility.Collapsed;
-        BtnGTabNote.Visibility = Visibility.Collapsed;
-        BtnGTabFiles.Visibility = Visibility.Collapsed;
 
         TxtNoProject.Visibility = Visibility.Collapsed;
         PanelProject.Visibility = Visibility.Visible;
@@ -265,43 +277,55 @@ public partial class MainWindow : Window
         ShowWorkloadTab();
     }
 
-    // 通用模块：独立入口，含 工作量 / 导出 / 快捷路径 三个功能
-    private void BtnGeneral_Click(object sender, RoutedEventArgs e)
+    // 主页按钮：功能卡片主页（导出工作量 / 快捷路径 / 思维导图 / 笔记 / 加密文件）
+    private void BtnHome_Click(object sender, RoutedEventArgs e)
     {
-        _monitor.NotifyActivity();
-        BtnGeneral.IsChecked = true;
-        OpenGeneral();
+        OpenHome();
     }
 
-    private void OpenGeneral()
+    private void OpenHome()
     {
+        _monitor.NotifyActivity();
         _currentProject = DataStore.FixedMachineProject;
         _currentProcessId = null;
         _exportDate = WorkloadRecord.GetShiftDate(DateTime.Now);
         _exportToday = true;
-        _generalTab = GeneralTab.Workload;
 
+        BtnHome.IsChecked = true;
         LstProjects.SelectedItem = null;
-        BtnTabProcess.Visibility = Visibility.Collapsed;
-        BtnTabWorkload.Visibility = Visibility.Collapsed;
-        BtnTabShortcuts.Visibility = Visibility.Collapsed;
-        BtnGTabWorkload.Visibility = Visibility.Visible;
-        BtnGTabExport.Visibility = Visibility.Visible;
-        BtnGTabShortcuts.Visibility = Visibility.Visible;
-        BtnGTabMindMap.Visibility = Visibility.Visible;
-        BtnGTabNote.Visibility = Visibility.Visible;
-        BtnGTabFiles.Visibility = Visibility.Visible;
 
         TxtNoProject.Visibility = Visibility.Collapsed;
         PanelProject.Visibility = Visibility.Visible;
-        ShowGeneralTab();
+        ShowGeneralHome();
+    }
+
+    // 左侧「通用」：与项目相同的上方标签栏，目前只有「工作量」一个板块（全局归属）
+    private void OpenGeneralWorkload()
+    {
+        _monitor.NotifyActivity();
+        _currentProject = DataStore.FixedMachineProject;
+        _currentProcessId = null;
+        _exportDate = WorkloadRecord.GetShiftDate(DateTime.Now);
+
+        BtnHome.IsChecked = false;
+        ProjectTabs.Visibility = Visibility.Visible;
+        PageHeader.Visibility = Visibility.Collapsed;
+        BtnTabProcess.Visibility = Visibility.Collapsed;
+        BtnTabWorkload.Visibility = Visibility.Visible;
+        BtnTabShortcuts.Visibility = Visibility.Collapsed;
+
+        TxtNoProject.Visibility = Visibility.Collapsed;
+        PanelProject.Visibility = Visibility.Visible;
+
+        BtnTabWorkload.IsChecked = true;
+        ShowWorkloadTab();
     }
 
     private void ShowNoProject()
     {
         _currentProject = null;
         _currentProcessId = null;
-        BtnGeneral.IsChecked = false;
+        BtnHome.IsChecked = false;
         PanelProject.Visibility = Visibility.Collapsed;
         TxtNoProject.Visibility = Visibility.Visible;
     }
@@ -328,24 +352,12 @@ public partial class MainWindow : Window
     private void ShowShortcutTab()
     {
         SaveNoteNow();
-        ViewProcessTab.Visibility = Visibility.Collapsed;
-        ViewWorkloadTab.Visibility = Visibility.Collapsed;
-        ViewExportTab.Visibility = Visibility.Collapsed;
-        ViewMindMapTab.Visibility = Visibility.Collapsed;
-        ViewNoteTab.Visibility = Visibility.Collapsed;
-        ViewFileTab.Visibility = Visibility.Collapsed;
+        HideAllViews();
         ViewShortcutTab.Visibility = Visibility.Visible;
         RefreshShortcuts();
     }
 
-    // ---------- 通用功能入口 ----------
-
-    private void GTabWorkload_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        _generalTab = GeneralTab.Workload;
-        ShowWorkloadTab();
-    }
+    // ---------- 主页功能入口（卡片 → 各功能独立整页） ----------
 
     private void GTabExport_Click(object sender, RoutedEventArgs e)
     {
@@ -382,46 +394,71 @@ public partial class MainWindow : Window
         ShowGeneralTab();
     }
 
-    // 按记录的入口显示通用内容（工作量复用工作量视图，日期共用）
+    // 按记录的入口显示通用内容（各功能为独立整页，顶部显示返回 + 标题）
     private void ShowGeneralTab()
     {
         switch (_generalTab)
         {
             case GeneralTab.Export:
                 SaveNoteNow();
-                BtnGTabExport.IsChecked = true;
-                ViewProcessTab.Visibility = Visibility.Collapsed;
-                ViewWorkloadTab.Visibility = Visibility.Collapsed;
-                ViewShortcutTab.Visibility = Visibility.Collapsed;
-                ViewMindMapTab.Visibility = Visibility.Collapsed;
-                ViewNoteTab.Visibility = Visibility.Collapsed;
-                ViewFileTab.Visibility = Visibility.Collapsed;
+                ShowPage("导出工作量");
+                HideAllViews();
                 ViewExportTab.Visibility = Visibility.Visible;
                 _exportToday = true;
                 _exportDate = WorkloadRecord.GetShiftDate(DateTime.Now);
                 RefreshExportDateButton();
                 break;
             case GeneralTab.Shortcuts:
-                BtnGTabShortcuts.IsChecked = true;
+                ShowPage("快捷路径");
                 ShowShortcutTab();
                 break;
             case GeneralTab.MindMap:
-                BtnGTabMindMap.IsChecked = true;
+                ShowPage("思维导图");
                 ShowMindMapTab();
                 break;
             case GeneralTab.Note:
-                BtnGTabNote.IsChecked = true;
+                ShowPage("笔记");
                 ShowNoteTab();
                 break;
             case GeneralTab.FileVault:
-                BtnGTabFiles.IsChecked = true;
+                ShowPage("加密文件");
                 ShowFileTab();
                 break;
             default:
-                BtnGTabWorkload.IsChecked = true;
-                ShowWorkloadTab();
+                ShowGeneralHome();
                 break;
         }
+    }
+
+    // 主页：功能卡片入口
+    private void ShowGeneralHome()
+    {
+        _generalTab = GeneralTab.Home;
+        ProjectTabs.Visibility = Visibility.Collapsed;
+        PageHeader.Visibility = Visibility.Collapsed;
+        HideAllViews();
+        ViewGeneralHome.Visibility = Visibility.Visible;
+    }
+
+    // 主页功能整页页头：隐藏项目标签、顶部显示标题
+    private void ShowPage(string title)
+    {
+        ProjectTabs.Visibility = Visibility.Collapsed;
+        PageHeader.Visibility = Visibility.Visible;
+        TxtPageTitle.Text = title;
+    }
+
+    // 隐藏右侧全部视图：各 Show* 开头调用，保证切换干净（含通用主页）
+    private void HideAllViews()
+    {
+        ViewProcessTab.Visibility = Visibility.Collapsed;
+        ViewWorkloadTab.Visibility = Visibility.Collapsed;
+        ViewExportTab.Visibility = Visibility.Collapsed;
+        ViewShortcutTab.Visibility = Visibility.Collapsed;
+        ViewMindMapTab.Visibility = Visibility.Collapsed;
+        ViewNoteTab.Visibility = Visibility.Collapsed;
+        ViewFileTab.Visibility = Visibility.Collapsed;
+        ViewGeneralHome.Visibility = Visibility.Collapsed;
     }
 
     // 左栏底部按钮：弹窗输入项目名
@@ -508,6 +545,15 @@ public partial class MainWindow : Window
         }
     }
 
+    // 右键菜单：只有真正的项目才允许上移/下移/删除（「工作量」是固定入口）
+    private void ProjectsMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        bool isProject = LstProjects.SelectedItem is string p && !string.IsNullOrWhiteSpace(p);
+        MenuMoveProjectUp.IsEnabled = isProject;
+        MenuMoveProjectDown.IsEnabled = isProject;
+        MenuDeleteProject.IsEnabled = isProject;
+    }
+
     private void MenuDeleteProject_Click(object sender, RoutedEventArgs e)
     {
         _monitor.NotifyActivity();
@@ -580,13 +626,8 @@ public partial class MainWindow : Window
     private void ShowProcessTab()
     {
         SaveNoteNow();
+        HideAllViews();
         ViewProcessTab.Visibility = Visibility.Visible;
-        ViewWorkloadTab.Visibility = Visibility.Collapsed;
-        ViewExportTab.Visibility = Visibility.Collapsed;
-        ViewShortcutTab.Visibility = Visibility.Collapsed;
-        ViewMindMapTab.Visibility = Visibility.Collapsed;
-        ViewNoteTab.Visibility = Visibility.Collapsed;
-        ViewFileTab.Visibility = Visibility.Collapsed;
         RefreshProcessList(_currentProcessId);
     }
 
@@ -1014,13 +1055,8 @@ public partial class MainWindow : Window
     private void ShowWorkloadTab()
     {
         SaveNoteNow();
-        ViewProcessTab.Visibility = Visibility.Collapsed;
+        HideAllViews();
         ViewWorkloadTab.Visibility = Visibility.Visible;
-        ViewExportTab.Visibility = Visibility.Collapsed;
-        ViewShortcutTab.Visibility = Visibility.Collapsed;
-        ViewMindMapTab.Visibility = Visibility.Collapsed;
-        ViewNoteTab.Visibility = Visibility.Collapsed;
-        ViewFileTab.Visibility = Visibility.Collapsed;
 
         var now = DateTime.Now;
         TxtWorkShift.Text = $"{WorkloadRecord.GetShiftDate(now):yyyy-MM-dd} {WorkloadRecord.GetShiftName(now)}";
@@ -1558,15 +1594,50 @@ public partial class MainWindow : Window
     {
         string url = (shortcut.FolderPath ?? string.Empty).Trim();
         if (url.Length == 0) return;
+        if (CopyToClipboard(url))
+        {
+            ShowShortcutHint($"已复制网址：{url}");
+            return;
+        }
+
+        // 失败不重试：直接打开手动复制弹窗
+        new ManualCopyDialog(url, _monitor) { Owner = this }.ShowDialog();
+        _monitor.NotifyActivity();
+    }
+
+    // 复制到剪贴板（单次尝试）：剪贴板 API 在被占用时会阻塞不返回，
+    // 所以放到独立 STA 线程做、带 700ms 超时，保证 UI 不会卡死
+    internal static bool CopyToClipboard(string text)
+    {
+        var finished = new ManualResetEventSlim(false);
+        bool ok = false;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                Clipboard.SetDataObject(text, true);
+                ok = true;
+            }
+            catch
+            {
+                // 失败（如剪贴板被锁定）直接返回，由调用方打开手动复制弹窗
+            }
+            finally
+            {
+                finished.Set();
+            }
+        });
         try
         {
-            Clipboard.SetDataObject(url, true);
-            ShowShortcutHint($"已复制网址：{url}");
+            thread.SetApartmentState(ApartmentState.STA); // 剪贴板 API 要求 STA 线程
+            thread.IsBackground = true;
+            thread.Start();
         }
-        catch (Exception ex)
+        catch
         {
-            MessageBox.Show($"复制失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
         }
+        return finished.Wait(700) && ok;
     }
 
     // 复制反馈：标题行临时显示 2 秒
@@ -1633,12 +1704,7 @@ public partial class MainWindow : Window
     private void ShowNoteTab()
     {
         SaveNoteNow();
-        ViewProcessTab.Visibility = Visibility.Collapsed;
-        ViewWorkloadTab.Visibility = Visibility.Collapsed;
-        ViewExportTab.Visibility = Visibility.Collapsed;
-        ViewShortcutTab.Visibility = Visibility.Collapsed;
-        ViewMindMapTab.Visibility = Visibility.Collapsed;
-        ViewFileTab.Visibility = Visibility.Collapsed;
+        HideAllViews();
         ViewNoteTab.Visibility = Visibility.Visible;
 
         string? keepId = _currentNote?.Id;
@@ -1826,12 +1892,7 @@ public partial class MainWindow : Window
 
     private void ShowFileTab()
     {
-        ViewProcessTab.Visibility = Visibility.Collapsed;
-        ViewWorkloadTab.Visibility = Visibility.Collapsed;
-        ViewExportTab.Visibility = Visibility.Collapsed;
-        ViewShortcutTab.Visibility = Visibility.Collapsed;
-        ViewMindMapTab.Visibility = Visibility.Collapsed;
-        ViewNoteTab.Visibility = Visibility.Collapsed;
+        HideAllViews();
         ViewFileTab.Visibility = Visibility.Visible;
         RefreshEncryptedFiles();
     }
@@ -2045,17 +2106,87 @@ public partial class MainWindow : Window
         RefreshEncryptedFiles();
     }
 
+    // 仅 .md/.sh/.py 支持在新窗口在线编辑，右键菜单按选中项启用/置灰
+    private void EncryptedFilesMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        MenuEditEncryptedFile.IsEnabled = LstEncryptedFiles.SelectedItem is EncryptedFile item && item.CanEdit;
+    }
+
+    private void MenuEditEncryptedFile_Click(object sender, RoutedEventArgs e)
+    {
+        _monitor.NotifyActivity();
+        if (LstEncryptedFiles.SelectedItem is not EncryptedFile item)
+        {
+            MessageBox.Show("请先右键点选要编辑的文件。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        OpenEncryptedFileEditor(item);
+    }
+
+    private void LstEncryptedFiles_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (LstEncryptedFiles.SelectedItem is EncryptedFile item && item.CanEdit)
+        {
+            _monitor.NotifyActivity();
+            OpenEncryptedFileEditor(item);
+        }
+    }
+
+    private void OpenEncryptedFileEditor(EncryptedFile item)
+    {
+        if (!item.CanEdit)
+        {
+            MessageBox.Show($"「{item.DisplayName}」不是 .md / .sh / .py 文件，暂不支持在线编辑。\n" +
+                            "可先导出解密副本，用其它工具编辑后再导入。",
+                "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        byte[] data;
+        try
+        {
+            data = DataStore.LoadEncryptedFileContent(item.Id, _password);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"打开失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        try
+        {
+            var editor = new CodeEditorWindow(item, data, _password, _monitor, OnEditorSaved) { Owner = this };
+            editor.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            // 编辑器加载失败只弹提示、不退出主程序；详情记入 error.log（exe 同级目录）
+            App.ReportFatal("在线编辑", ex);
+            return;
+        }
+        RefreshEncryptedFiles();
+    }
+
+    // 编辑器保存内容后回调：刷新文件大小等元数据（内容本身已在编辑器里加密写回）
+    private void OnEditorSaved(EncryptedFile item)
+    {
+        try
+        {
+            DataStore.SaveEncryptedFiles(CurrentEncryptedFiles(), _password);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"文件内容已加密保存，但文件列表信息保存失败：{ex.Message}",
+                "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     // ---------- 思维导图（通用模块独立功能） ----------
 
     private void ShowMindMapTab()
     {
         SaveNoteNow();
-        ViewProcessTab.Visibility = Visibility.Collapsed;
-        ViewWorkloadTab.Visibility = Visibility.Collapsed;
-        ViewExportTab.Visibility = Visibility.Collapsed;
-        ViewShortcutTab.Visibility = Visibility.Collapsed;
-        ViewNoteTab.Visibility = Visibility.Collapsed;
-        ViewFileTab.Visibility = Visibility.Collapsed;
+        HideAllViews();
         ViewMindMapTab.Visibility = Visibility.Visible;
 
         try

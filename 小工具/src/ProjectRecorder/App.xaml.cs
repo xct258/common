@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -49,6 +50,9 @@ public partial class App : Application
 
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            // AvalonEdit 程序集内嵌在 exe 里（保持单文件发布），首次用到时从资源加载
+            AppDomain.CurrentDomain.AssemblyResolve += ResolveEmbeddedAssemblies;
+
             // 记住了登录：跳过登录框直接进入（配置文件损坏/换 Windows 用户则回退到登录）
             if (AutoLoginStore.TryLoad(out string savedPassword))
             {
@@ -76,6 +80,69 @@ public partial class App : Application
             ReportFatal("Startup", ex);
             Shutdown();
         }
+    }
+
+    private static readonly object _embeddedLock = new();
+    private static Dictionary<string, byte[]>? _embeddedDllBytes;
+    private static readonly Dictionary<string, Assembly?> _embeddedLoaded = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>从内嵌 zip 按需加载第三方程序集（单文件发布用），同名只加载一次保证类型标识一致。
+    /// zip 由构建时的 PackEmbeddedLibs 目标从实际依赖闭包生成，升级包后无需手工维护。</summary>
+    private static Assembly? ResolveEmbeddedAssemblies(object? sender, ResolveEventArgs args)
+    {
+        string? name;
+        try
+        {
+            name = new AssemblyName(args.Name).Name;
+        }
+        catch
+        {
+            return null;
+        }
+        if (string.IsNullOrEmpty(name) || name.EndsWith(".resources", StringComparison.OrdinalIgnoreCase))
+            return null;
+        lock (_embeddedLock)
+        {
+            if (_embeddedLoaded.TryGetValue(name, out Assembly? cached)) return cached;
+            Assembly? loaded = null;
+            try
+            {
+                _embeddedDllBytes ??= ReadEmbeddedDlls();
+                if (_embeddedDllBytes.TryGetValue(name + ".dll", out byte[]? bytes) && bytes != null)
+                    loaded = Assembly.Load(bytes);
+            }
+            catch
+            {
+                loaded = null;
+            }
+            _embeddedLoaded[name] = loaded;
+            return loaded;
+        }
+    }
+
+    private static Dictionary<string, byte[]> ReadEmbeddedDlls()
+    {
+        var map = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var stream = typeof(App).Assembly.GetManifestResourceStream("ProjectRecorder.Resources.libs.zip");
+            if (stream == null) return map;
+            using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+            foreach (var entry in archive.Entries)
+            {
+                if (!entry.FullName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) continue;
+                if (entry.FullName.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase)) continue;
+                using var entryStream = entry.Open();
+                using var buffer = new MemoryStream();
+                entryStream.CopyTo(buffer);
+                map[entry.Name] = buffer.ToArray();
+            }
+        }
+        catch
+        {
+            // 内嵌库读失败：调用方走正常探测，找不到再报缺失
+        }
+        return map;
     }
 
     internal static void ReportFatal(string where, Exception? ex)

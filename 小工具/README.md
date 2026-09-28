@@ -74,7 +74,7 @@ chmod +x publish.sh && ./publish.sh
 - 每张工序卡片 `- 数量 +` 调数量（步进 `1 ↔ -1` 不经过 0，数量不能为 0）；`添 加` 记入当前班次，负数即冲减/纠正多记；本班数量最低为 0，冲减超过本班数量时直接按本班数量冲减到 0（无弹窗）
 - 班次：8:30~21:00 白班，其余夜班；0:00~8:30 的夜班归前一日（如 12 号 7 点记 11 号夜班）
 - 导出：`通用` → `导 出` 入口 → 选日期 → `导 出 Excel` → 真 Excel（.xlsx，冻结标题行，列宽按内容自动计算，只列各项目/工序的数量合计，同一项目的单元格纵向合并，不列明细）
-- 快捷路径：`通用` 和每个项目各有一份，互不干扰（面板顶部都有 `快捷路径` 入口）；`通用` 左右分栏 `文件夹（单击打开）` / `网址（单击复制）`，右上角 `＋ 添加` 可选类型 `文件夹` / `网址`；项目里只显示 `文件夹` 一栏，`＋ 添加` 也只能添加文件夹。文件夹可“浏览…”选择、单击用资源管理器打开；网址自动补 `https://`、单击复制到剪贴板（不打开浏览器，标题行提示“已复制”），右键可复制网址/删除；删除项目会一并删除该项目的快捷路径
+- 快捷路径：`通用` 和每个项目各有一份，互不干扰（面板顶部都有 `快捷路径` 入口）；`通用` 左右分栏 `文件夹（单击打开）` / `网址（单击复制）`，右上角 `＋ 添加` 可选类型 `文件夹` / `网址`；项目里只显示 `文件夹` 一栏，`＋ 添加` 也只能添加文件夹。文件夹可“浏览…”选择、单击用资源管理器打开；网址自动补 `https://`、单击复制到剪贴板（失败自动打开手动复制弹窗，手动 Ctrl+C 兜底；不打开浏览器，标题行提示“已复制”），右键可复制网址/删除；删除项目会一并删除该项目的快捷路径
 - 思维导图：`通用` 模块独立功能，全宽画布 + 顶部导图名下拉（切换/`＋ 新建`/重命名/删除；空列表时点导图名或页面中央按钮直接新建）——每个节点分 `标题` + `内容` 两部分，画布上只显示标题（鼠标悬停显示内容），双击节点弹窗编辑（标题必填；`Ctrl+Enter` 确定）、右键节点 `添加子节点` / `添加同级节点` / `编辑标题/内容` / `删除节点`、空白处右键给中心主题加子节点、空白拖动平移（或拖滚动条）、鼠标滚轮缩放（以鼠标位置为中心）、右上角 `－ / ＋ / 适应窗口` 调视图；键盘：`Tab` 加子节点、`Enter` 加同级（根节点为编辑）、`F2` 编辑、`Delete` 删除、方向键移动选择、`Esc` 取消选择；`操作教程` 按钮弹窗显示完整说明；`导 出 ▾` 菜单支持 PNG 图片（白底、2 倍分辨率，不受当前缩放影响）和 TXT 文本大纲（层级缩进输出标题与内容，适合粘贴给 AI 提需求）；增删改后自动加密保存
 - 笔记：`通用` 模块独立功能，左列笔记列表（`＋ 新建笔记`、右键删除，卡片显示标题与更新时间），右侧编辑 `标题` + `正文`（多行）；输入即改内存、700ms 防抖自动加密保存，切页/切笔记/退出时立即落盘，右下角显示“编辑中… / 已自动保存 时间”；标题为空时列表显示“未命名笔记”
 - 加密文件：`通用` 模块独立功能，`＋ 导入文件`（可多选、任意类型、单文件 ≤200MB）→ 读取后逐个 AES-256 加密存 `Data/files/<文件Id>.enc`，列表显示名称、大小、导入时间与合计大小；右键 `导出解密副本`（明文，另存到你选的位置，请妥善保管）、`重命名`、`删除`（删除时一并删除加密内容）
@@ -101,7 +101,7 @@ chmod +x publish.sh && ./publish.sh
   publish/小工具.exe                  发布产物（随仓库一起发布）
   src/ProjectRecorder/
   App.xaml(.cs) / LoginWindow / MainWindow（左侧「通用模块 + 项目列表」，右侧按入口切换视图，通用含工作量/导出/快捷路径/思维导图/笔记/加密文件）
-  AddProjectDialog / AddProcessDialog / StepDialog（含配图）/ PathShortcutDialog（名称+路径+浏览）/ NameInputDialog（导图命名）/ MindNodeDialog（节点标题+内容）/ MindMapHelpDialog（操作教程）/ ImageViewerDialog
+  AddProjectDialog / AddProcessDialog / StepDialog（含配图）/ PathShortcutDialog（名称+路径+浏览）/ NameInputDialog（导图命名）/ MindNodeDialog（节点标题+内容）/ MindMapHelpDialog（操作教程）/ ManualCopyDialog（手动复制网址）/ ImageViewerDialog
   Models/ProcessItem.cs(FlowStep) / WorkloadRecord.cs / WorkloadProcess.cs / PathShortcut.cs / MindMap.cs(MindNode) / NoteItem.cs(笔记) / EncryptedFile.cs(加密文件)
   Services/AuthService.cs / CryptoService.cs / DataStore.cs / InactivityMonitor.cs / ExcelExporter.cs(手写xlsx) / MindMapOutlineExporter.cs(导图文本大纲)
   Converters/ImageConverters.cs

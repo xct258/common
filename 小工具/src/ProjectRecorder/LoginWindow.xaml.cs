@@ -74,6 +74,16 @@ public partial class LoginWindow : Window
             _ = DataStore.LoadShortcuts(password);
             AuthService.SessionPassword = password;
 
+            // 勾选“保存登录”且密码正确：二次确认后再写入，下次自动登录
+            if (ChkRemember.IsChecked == true)
+            {
+                var confirm = MessageBox.Show(this,
+                    "确认记住密码？\n下次打开将跳过登录直接进入（仅本机当前 Windows 用户有效）。",
+                    "记住密码", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (confirm != MessageBoxResult.Yes)
+                    ChkRemember.IsChecked = false;
+            }
+
             // 勾选“保存登录”：写入用户文件夹（DPAPI 加密），下次自动登录并取消 120 秒自动退出
             if (ChkRemember.IsChecked == true)
             {

@@ -8,6 +8,33 @@
     <Window.Resources>
         <conv:StepImageToThumbConverter x:Key="StepImageThumb"/>
         <conv:NotEmptyToVisibilityConverter x:Key="ImagesToVisibility"/>
+
+        <!-- 通用主页：功能卡片入口按钮 -->
+        <Style x:Key="GeneralCard" TargetType="Button">
+            <Setter Property="Width" Value="228"/>
+            <Setter Property="Height" Value="118"/>
+            <Setter Property="Margin" Value="0,0,16,16"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="White" BorderBrush="#E5E7EB"
+                                BorderThickness="1" CornerRadius="10" Padding="16,14">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#93C5FD"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#F8FAFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Grid Margin="14">
         <Grid.RowDefinitions>
@@ -34,11 +61,11 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- 通用模块：独立入口，不在项目列表内 -->
-                    <RadioButton x:Name="BtnGeneral" Grid.Row="0" Content="通用"
+                    <!-- 主页：功能卡片入口 -->
+                    <RadioButton x:Name="BtnHome" Grid.Row="0" Content="主页"
                                  GroupName="SideModule" Style="{StaticResource TabButton}"
                                  HorizontalAlignment="Stretch" Margin="8,8,8,4"
-                                 Click="BtnGeneral_Click"/>
+                                 Click="BtnHome_Click"/>
 
                     <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="12,10">
                         <TextBlock Text="项目" FontSize="14" FontWeight="Bold" Foreground="#111827"/>
@@ -47,7 +74,7 @@
                     <Grid Grid.Row="2">
                         <TextBlock x:Name="TxtProjectEmpty" Text="暂无项目，点下方“＋ 添加项目”"
                                    Style="{StaticResource EmptyText}" TextWrapping="Wrap"
-                                   Margin="10" Visibility="Collapsed"/>
+                                   VerticalAlignment="Bottom" Margin="10,10,10,12" Visibility="Collapsed"/>
                         <ListBox x:Name="LstProjects" SelectionMode="Single"
                                  Style="{StaticResource CleanList}" Padding="8"
                                  SelectionChanged="LstProjects_SelectionChanged"
@@ -56,10 +83,10 @@
                                  ScrollViewer.CanContentScroll="False"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <ListBox.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="上移" Click="MenuMoveProjectUp_Click"/>
-                                    <MenuItem Header="下移" Click="MenuMoveProjectDown_Click"/>
-                                    <MenuItem Header="删除该项目" Click="MenuDeleteProject_Click"/>
+                                <ContextMenu Opened="ProjectsMenu_Opened">
+                                    <MenuItem x:Name="MenuMoveProjectUp" Header="上移" Click="MenuMoveProjectUp_Click"/>
+                                    <MenuItem x:Name="MenuMoveProjectDown" Header="下移" Click="MenuMoveProjectDown_Click"/>
+                                    <MenuItem x:Name="MenuDeleteProject" Header="删除该项目" Click="MenuDeleteProject_Click"/>
                                 </ContextMenu>
                             </ListBox.ContextMenu>
                             <ListBox.ItemTemplate>
@@ -90,38 +117,71 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- 面板头：功能入口（项目：工序/工作量/快捷路径；通用：工作量/导出/快捷路径） -->
+                        <!-- 面板头：项目=工序/工作量/快捷路径 标签；通用功能=返回 + 标题 -->
                         <Border Grid.Row="0" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1" Padding="14,10">
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="BtnTabProcess" Content="工 序" Margin="0"
-                                             GroupName="ProjectTabs" Style="{StaticResource TabButton}"
-                                             Click="TabProcess_Click"/>
-                                <RadioButton x:Name="BtnTabWorkload" Content="工作量" Margin="8,0,0,0"
-                                             GroupName="ProjectTabs" Style="{StaticResource TabButton}"
-                                             Click="TabWorkload_Click"/>
-                                <RadioButton x:Name="BtnTabShortcuts" Content="快捷路径" Margin="8,0,0,0"
-                                             GroupName="ProjectTabs" Style="{StaticResource TabButton}"
-                                             Click="TabShortcuts_Click" Visibility="Collapsed"/>
-                                <RadioButton x:Name="BtnGTabWorkload" Content="工作量" Margin="0"
-                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
-                                             Click="GTabWorkload_Click" Visibility="Collapsed"/>
-                                <RadioButton x:Name="BtnGTabExport" Content="导 出" Margin="8,0,0,0"
-                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
-                                             Click="GTabExport_Click" Visibility="Collapsed"/>
-                                <RadioButton x:Name="BtnGTabShortcuts" Content="快捷路径" Margin="8,0,0,0"
-                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
-                                             Click="GTabShortcuts_Click" Visibility="Collapsed"/>
-                                <RadioButton x:Name="BtnGTabMindMap" Content="思维导图" Margin="8,0,0,0"
-                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
-                                             Click="GTabMindMap_Click" Visibility="Collapsed"/>
-                                <RadioButton x:Name="BtnGTabNote" Content="笔 记" Margin="8,0,0,0"
-                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
-                                             Click="GTabNote_Click" Visibility="Collapsed"/>
-                                <RadioButton x:Name="BtnGTabFiles" Content="加密文件" Margin="8,0,0,0"
-                                             GroupName="GeneralTabs" Style="{StaticResource TabButton}"
-                                             Click="GTabFiles_Click" Visibility="Collapsed"/>
-                            </StackPanel>
+                            <Grid>
+                                <StackPanel x:Name="ProjectTabs" Orientation="Horizontal">
+                                    <RadioButton x:Name="BtnTabProcess" Content="工 序" Margin="0"
+                                                 GroupName="ProjectTabs" Style="{StaticResource TabButton}"
+                                                 Click="TabProcess_Click"/>
+                                    <RadioButton x:Name="BtnTabWorkload" Content="工作量" Margin="8,0,0,0"
+                                                 GroupName="ProjectTabs" Style="{StaticResource TabButton}"
+                                                 Click="TabWorkload_Click"/>
+                                    <RadioButton x:Name="BtnTabShortcuts" Content="快捷路径" Margin="8,0,0,0"
+                                                 GroupName="ProjectTabs" Style="{StaticResource TabButton}"
+                                                 Click="TabShortcuts_Click"/>
+                                </StackPanel>
+                                <StackPanel x:Name="PageHeader" Orientation="Horizontal" Visibility="Collapsed">
+                                    <TextBlock x:Name="TxtPageTitle" FontSize="15" FontWeight="Bold"
+                                               Foreground="#111827" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
                         </Border>
+
+                        <!-- 通用主页：功能卡片入口（点进去是各功能独立整页） -->
+                        <Grid x:Name="ViewGeneralHome" Grid.Row="1" Visibility="Collapsed">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="28,22">
+                                <WrapPanel Margin="0,0,0,0">
+                                    <Button Style="{StaticResource GeneralCard}" Click="GTabExport_Click">
+                                        <StackPanel>
+                                            <TextBlock Text="导出工作量" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                            <TextBlock Text="按日期导出 Excel 工作量合计" FontSize="12" Foreground="#6B7280"
+                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource GeneralCard}" Click="GTabShortcuts_Click">
+                                        <StackPanel>
+                                            <TextBlock Text="快捷路径" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                            <TextBlock Text="常用文件夹与网址，一点即开 / 复制" FontSize="12" Foreground="#6B7280"
+                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource GeneralCard}" Click="GTabMindMap_Click">
+                                        <StackPanel>
+                                            <TextBlock Text="思维导图" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                            <TextBlock Text="梳理思路，可导出图片 / 大纲" FontSize="12" Foreground="#6B7280"
+                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource GeneralCard}" Click="GTabNote_Click">
+                                        <StackPanel>
+                                            <TextBlock Text="笔记" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                            <TextBlock Text="随手记录，自动加密保存" FontSize="12" Foreground="#6B7280"
+                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Style="{StaticResource GeneralCard}" Click="GTabFiles_Click">
+                                        <StackPanel>
+                                            <TextBlock Text="加密文件" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                            <TextBlock Text="导入即 AES-256 加密；md / sh / py 可在线编辑" FontSize="12"
+                                                       Foreground="#6B7280" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                        </StackPanel>
+                                    </Button>
+                                </WrapPanel>
+                            </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
 
                         <!-- 工序标签页：左列工序，右列步骤详情 -->
                         <Grid x:Name="ViewProcessTab" Grid.Row="1" Visibility="Collapsed">
@@ -309,10 +369,8 @@
                         <!-- 通用入口：导出合计 Excel -->
                         <Grid x:Name="ViewExportTab" Grid.Row="1" Visibility="Collapsed">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock Text="导出工作量合计" FontSize="16" FontWeight="Bold" Foreground="#111827"
-                                           HorizontalAlignment="Center"/>
                                 <TextBlock Text="默认导出本班次，选日期后导出该日期合计" FontSize="12"
-                                           Foreground="#6B7280" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                                           Foreground="#6B7280" HorizontalAlignment="Center"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
                                     <Button x:Name="ExpPrevDay" Content="◀" Width="30" Height="30"
                                             Style="{StaticResource BtnStep}" Click="ExpPrevDay_Click"/>
@@ -679,10 +737,15 @@
                                          Style="{StaticResource CleanList}"
                                          PreviewMouseRightButtonDown="LstEncryptedFiles_RightButtonDown"
                                          PreviewMouseRightButtonUp="ListBlankUp"
+                                         MouseDoubleClick="LstEncryptedFiles_MouseDoubleClick"
                                          ScrollViewer.CanContentScroll="False"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                     <ListBox.ContextMenu>
-                                        <ContextMenu>
+                                        <ContextMenu Opened="EncryptedFilesMenu_Opened">
+                                            <MenuItem x:Name="MenuEditEncryptedFile" Header="编辑"
+                                                      Click="MenuEditEncryptedFile_Click"
+                                                      ToolTip="支持 .md / .sh / .py；双击文件也可打开"/>
+                                            <Separator/>
                                             <MenuItem Header="导出解密副本" Click="MenuExportEncryptedFile_Click"/>
                                             <MenuItem Header="重命名" Click="MenuRenameEncryptedFile_Click"/>
                                             <MenuItem Header="删除" Click="MenuDeleteEncryptedFile_Click"/>
@@ -691,7 +754,7 @@
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Border Margin="0,3" Padding="10,8" Style="{StaticResource CardBorder}"
-                                                    ToolTip="右键：导出解密副本 / 重命名 / 删除">
+                                                    ToolTip="双击或右键：编辑（.md / .sh / .py）；支持导出解密副本 / 重命名 / 删除">
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding DisplayName}" FontSize="14"
                                                                FontWeight="Bold" Foreground="#1F2937"
