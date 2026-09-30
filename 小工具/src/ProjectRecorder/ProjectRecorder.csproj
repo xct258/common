@@ -30,8 +30,12 @@
          由 App 的 AssemblyResolve 运行时按需解压加载。 -->
     <EmbeddedResource Include="Resources/libs.zip"
                       LogicalName="ProjectRecorder.Resources.libs.zip" />
-    <!-- Shell 语法高亮（AvalonEdit 内置 md/py，不含 sh） -->
-    <EmbeddedResource Include="Resources/Bash.xshd" />
+        <!-- 在线编辑“资料”面板：sh / py / md 中文速查文档 -->
+        <EmbeddedResource Include="Resources/ref-sh.md" LogicalName="ProjectRecorder.Resources.ref-sh.md" />
+        <EmbeddedResource Include="Resources/ref-py.md" LogicalName="ProjectRecorder.Resources.ref-py.md" />
+        <EmbeddedResource Include="Resources/ref-md.md" LogicalName="ProjectRecorder.Resources.ref-md.md" />
+        <!-- Shell 语法高亮（AvalonEdit 内置 md/py，不含 sh） -->
+        <EmbeddedResource Include="Resources/Bash.xshd" />
     <!-- Python Dark+ 高亮：控制流紫色 / def·class 蓝色分桶，比内置单色更接近 VS Code -->
     <EmbeddedResource Include="Resources/Python.xshd" />
   </ItemGroup>

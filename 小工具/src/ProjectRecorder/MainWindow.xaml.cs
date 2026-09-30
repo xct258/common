@@ -18,16 +18,17 @@ namespace ProjectRecorder;
 
 /// <summary>
 /// 主窗口：左侧常驻「通用模块入口 + 项目列表」，右侧为选中项的面板。
-/// 通用已独立：只有工作量与导出；项目面板为「工序 / 工作量」两个标签页。
+/// 通用已独立：含「工作量 / 快捷路径」；项目面板为「工序 / 工作量 / 快捷路径」标签页。
 /// </summary>
 public partial class MainWindow : Window
 {
-    private enum GeneralTab { Home, Export, Shortcuts, MindMap, Note, FileVault }
+    private enum GeneralTab { Home, Export, MindMap, Note, FileVault }
 
     private readonly string _password;
     private List<string> _projects = new();
     private List<ProcessItem> _processes = new();
     private List<PathShortcut> _shortcuts = new();
+    private readonly Dictionary<string, CodeEditorWindow> _openEditors = new();
     private List<MindMap> _mindMaps = new();
     private List<NoteItem> _notes = new();
     private string? _currentProject;
@@ -277,7 +278,7 @@ public partial class MainWindow : Window
         ShowWorkloadTab();
     }
 
-    // 主页按钮：功能卡片主页（导出工作量 / 快捷路径 / 思维导图 / 笔记 / 加密文件）
+    // 主页按钮：功能卡片主页（导出工作量 / 思维导图 / 笔记 / 加密文件）
     private void BtnHome_Click(object sender, RoutedEventArgs e)
     {
         OpenHome();
@@ -299,7 +300,7 @@ public partial class MainWindow : Window
         ShowGeneralHome();
     }
 
-    // 左侧「通用」：与项目相同的上方标签栏，目前只有「工作量」一个板块（全局归属）
+    // 左侧「通用」：与项目相同的上方标签栏，含「工作量 / 快捷路径」板块（全局归属）
     private void OpenGeneralWorkload()
     {
         _monitor.NotifyActivity();
@@ -312,7 +313,7 @@ public partial class MainWindow : Window
         PageHeader.Visibility = Visibility.Collapsed;
         BtnTabProcess.Visibility = Visibility.Collapsed;
         BtnTabWorkload.Visibility = Visibility.Visible;
-        BtnTabShortcuts.Visibility = Visibility.Collapsed;
+        BtnTabShortcuts.Visibility = Visibility.Visible;
 
         TxtNoProject.Visibility = Visibility.Collapsed;
         PanelProject.Visibility = Visibility.Visible;
@@ -366,13 +367,6 @@ public partial class MainWindow : Window
         ShowGeneralTab();
     }
 
-    private void GTabShortcuts_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        _generalTab = GeneralTab.Shortcuts;
-        ShowGeneralTab();
-    }
-
     private void GTabMindMap_Click(object sender, RoutedEventArgs e)
     {
         _monitor.NotifyActivity();
@@ -407,10 +401,6 @@ public partial class MainWindow : Window
                 _exportToday = true;
                 _exportDate = WorkloadRecord.GetShiftDate(DateTime.Now);
                 RefreshExportDateButton();
-                break;
-            case GeneralTab.Shortcuts:
-                ShowPage("快捷路径");
-                ShowShortcutTab();
                 break;
             case GeneralTab.MindMap:
                 ShowPage("思维导图");
@@ -2199,6 +2189,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 同一文件已打开：激活原窗口，避免多窗口编辑同一文件互相覆盖
+        if (_openEditors.TryGetValue(item.Id, out var opened))
+        {
+            if (opened.WindowState == WindowState.Minimized)
+                opened.WindowState = WindowState.Normal;
+            opened.Activate();
+            return;
+        }
+
         byte[] data;
         try
         {
@@ -2212,24 +2211,40 @@ public partial class MainWindow : Window
 
         try
         {
-            var editor = new CodeEditorWindow(item, data, _password, _monitor, OnEditorSaved) { Owner = this };
-            editor.ShowDialog();
+            // 非模态独立窗口：编辑时仍可操作主窗口
+            var editor = new CodeEditorWindow(item, data, _password, _monitor, OnEditorSaved);
+            _openEditors[item.Id] = editor;
+            editor.Closed += (_, _) =>
+            {
+                _openEditors.Remove(item.Id);
+                if (IsLoaded) RefreshEncryptedFiles();
+            };
+            editor.Show();
         }
         catch (Exception ex)
         {
             // 编辑器加载失败只弹提示、不退出主程序；详情记入 error.log（exe 同级目录）
+            _openEditors.Remove(item.Id);
             App.ReportFatal("在线编辑", ex);
             return;
         }
-        RefreshEncryptedFiles();
     }
 
     // 编辑器保存内容后回调：刷新文件大小等元数据（内容本身已在编辑器里加密写回）
     private void OnEditorSaved(EncryptedFile item)
     {
+        var files = CurrentEncryptedFiles();
+        // 编辑器持有的可能是旧列表实例；按 Id 同步元数据，避免刷新列表后大小/时间丢失
+        var current = files.FirstOrDefault(x => x.Id == item.Id);
+        if (current != null && !ReferenceEquals(current, item))
+        {
+            current.Size = item.Size;
+            current.UpdatedTime = item.UpdatedTime;
+        }
+
         try
         {
-            DataStore.SaveEncryptedFiles(CurrentEncryptedFiles(), _password);
+            DataStore.SaveEncryptedFiles(files, _password);
         }
         catch (Exception ex)
         {
@@ -2460,7 +2475,7 @@ public partial class MainWindow : Window
         _monitor.NotifyActivity();
     }
 
-    // 导出：按按钮弹出菜单选择图片（PNG）或文本大纲（TXT）
+    // 导出：按按钮弹出菜单选择图片（PNG）或 YAML（适合给 AI）
     private void BtnMindExport_Click(object sender, RoutedEventArgs e)
     {
         _monitor.NotifyActivity();
@@ -2475,9 +2490,9 @@ public partial class MainWindow : Window
         var png = new MenuItem { Header = "导出为图片（PNG）" };
         png.Click += (_, _) => ExportMindMapPng();
         menu.Items.Add(png);
-        var txt = new MenuItem { Header = "导出为文本大纲（TXT，适合给 AI）" };
-        txt.Click += (_, _) => ExportMindMapText();
-        menu.Items.Add(txt);
+        var yaml = new MenuItem { Header = "导出为 YAML（适合给 AI）" };
+        yaml.Click += (_, _) => ExportMindMapYaml();
+        menu.Items.Add(yaml);
 
         menu.PlacementTarget = sender as UIElement;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
@@ -2513,23 +2528,23 @@ public partial class MainWindow : Window
         }
     }
 
-    // 文本导出：Markdown 风格缩进大纲（标题 + 内容），方便直接给 AI 提需求
-    private void ExportMindMapText()
+    // YAML 导出：树形结构（title / content / children），方便直接给 AI 提需求
+    private void ExportMindMapYaml()
     {
         var map = _currentMindMap();
         if (map == null) return;
 
         var fileDlg = new SaveFileDialog
         {
-            Title = "导出为文本大纲",
-            Filter = "文本文件|*.txt",
-            FileName = SafeFileName(map.Name) + ".txt"
+            Title = "导出为 YAML",
+            Filter = "YAML 文件|*.yaml;*.yml",
+            FileName = SafeFileName(map.Name) + ".yaml"
         };
         if (fileDlg.ShowDialog(this) != true) return;
 
         try
         {
-            int count = MindMapOutlineExporter.ExportTxt(fileDlg.FileName, map);
+            int count = MindMapOutlineExporter.ExportYaml(fileDlg.FileName, map);
             MessageBox.Show($"导出成功，共 {count} 个节点：\n{fileDlg.FileName}", "导出",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }

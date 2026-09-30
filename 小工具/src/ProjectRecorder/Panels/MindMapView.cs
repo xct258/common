@@ -35,17 +35,50 @@ public class MindMapView : UserControl
     private static readonly Brush RootBg = Frozen(0x25, 0x63, 0xEB);
     private static readonly Brush RootFg = Brushes.White;
     private static readonly Brush RootBorder = Frozen(0x1D, 0x4E, 0xD8);
-    private static readonly Brush L1Bg = Frozen(0xDB, 0xEA, 0xFE);
-    private static readonly Brush L1Fg = Frozen(0x1E, 0x40, 0xAF);
-    private static readonly Brush L1Border = Frozen(0x93, 0xC5, 0xFD);
-    private static readonly Brush L2Bg = Frozen(0xEF, 0xF6, 0xFF);
-    private static readonly Brush L2Fg = Frozen(0x1F, 0x29, 0x37);
-    private static readonly Brush L2Border = Frozen(0xBF, 0xDB, 0xFE);
-    private static readonly Brush DeepBg = Brushes.White;
     private static readonly Brush DeepFg = Frozen(0x37, 0x41, 0x51);
-    private static readonly Brush DeepBorder = Frozen(0xE2, 0xE8, 0xF0);
-    private static readonly Brush EdgeBrush = Frozen(0x93, 0xC5, 0xFD);
     private static readonly Brush SelectedBorder = Frozen(0xF5, 0x9E, 0x0B);
+
+    /// <summary>新建节点的默认名前缀。</summary>
+    private const string DefaultNodeName = "新节点";
+
+    /// <summary>
+    /// 每个一级分支一套配色（背景/前景/边框）；二级、更深层沿用所属分支的淡色，
+    /// 使同一分支在视觉上连成一组。
+    /// </summary>
+    private sealed class BranchColors
+    {
+        public Brush L1Bg = null!;
+        public Brush L1Fg = null!;
+        public Brush L1Border = null!;
+        public Brush L2Bg = null!;
+        public Brush L2Border = null!;
+        public Brush DeepBorder = null!;
+        public Brush Edge = null!;
+    }
+
+    private static readonly BranchColors[] BranchPalette = BuildBranchPalette();
+
+    private static BranchColors[] BuildBranchPalette()
+    {
+        // 14 种色相，尽量覆盖不同色调，分支多时循环使用
+        double[] hues = { 210, 158, 25, 282, 342, 190, 45, 130, 258, 3, 300, 96, 175, 60 };
+        var list = new BranchColors[hues.Length];
+        for (int i = 0; i < hues.Length; i++)
+        {
+            double h = hues[i];
+            list[i] = new BranchColors
+            {
+                L1Bg = Frozen(Hsl(h, 0.66, 0.90)),
+                L1Fg = Frozen(Hsl(h, 0.72, 0.25)),
+                L1Border = Frozen(Hsl(h, 0.60, 0.74)),
+                L2Bg = Frozen(Hsl(h, 0.58, 0.95)),
+                L2Border = Frozen(Hsl(h, 0.48, 0.84)),
+                DeepBorder = Frozen(Hsl(h, 0.42, 0.86)),
+                Edge = Frozen(Hsl(h, 0.55, 0.70))
+            };
+        }
+        return list;
+    }
 
     private static SolidColorBrush Frozen(byte r, byte g, byte b)
     {
@@ -54,10 +87,37 @@ public class MindMapView : UserControl
         return brush;
     }
 
+    private static SolidColorBrush Frozen(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    /// <summary>HSL -> RGB；h 单位度，s/l 取 0~1。</summary>
+    private static Color Hsl(double h, double s, double l)
+    {
+        h = ((h % 360) + 360) % 360;
+        double c = (1 - Math.Abs(2 * l - 1)) * s;
+        double x = c * (1 - Math.Abs((h / 60.0) % 2 - 1));
+        double m = l - c / 2;
+        double r, g, b;
+        if (h < 60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        return Color.FromRgb(ToByte(r + m), ToByte(g + m), ToByte(b + m));
+    }
+
+    private static byte ToByte(double v) => (byte)Math.Max(0, Math.Min(255, Math.Round(v * 255)));
+
     private sealed class NodeVisual
     {
         public MindNode Node = null!;
         public int Depth;
+        public int Branch = -1;   // 所属一级分支序号（根为 -1），决定配色
         public double X, Y, W, H, SubH;
         public List<NodeVisual> Children = new();
         public Border? Box;
@@ -209,7 +269,7 @@ public class MindMapView : UserControl
             return;
         }
 
-        _root = BuildVisual(_map.Root, 0);
+        _root = BuildVisual(_map.Root, 0, -1);
         MeasureVisual(_root);
         Place(_root, EdgeGap, EdgeGap);
 
@@ -224,11 +284,12 @@ public class MindMapView : UserControl
         AddNodeBoxes(_root);
     }
 
-    private static NodeVisual BuildVisual(MindNode node, int depth)
+    private static NodeVisual BuildVisual(MindNode node, int depth, int branch)
     {
-        var v = new NodeVisual { Node = node, Depth = depth };
-        foreach (var child in node.Children ?? new List<MindNode>())
-            v.Children.Add(BuildVisual(child, depth + 1));
+        var v = new NodeVisual { Node = node, Depth = depth, Branch = branch };
+        var children = node.Children ?? new List<MindNode>();
+        for (int i = 0; i < children.Count; i++)
+            v.Children.Add(BuildVisual(children[i], depth + 1, depth == 0 ? i : branch));
         return v;
     }
 
@@ -318,7 +379,7 @@ public class MindMapView : UserControl
             _surface.Children.Add(new Path
             {
                 Data = geometry,
-                Stroke = EdgeBrush,
+                Stroke = BranchEdge(c.Branch),
                 StrokeThickness = v.Depth == 0 ? 2.4 : 1.8,
                 StrokeStartLineCap = PenLineCap.Round,
                 StrokeEndLineCap = PenLineCap.Round
@@ -340,7 +401,7 @@ public class MindMapView : UserControl
 
     private Border MakeNodeBox(NodeVisual v)
     {
-        var (bg, fg, _) = NodeColors(v.Depth);
+        var (bg, fg, _) = NodeColors(v.Depth, v.Branch);
         var text = new TextBlock
         {
             Text = v.Node.Title ?? string.Empty,
@@ -380,21 +441,30 @@ public class MindMapView : UserControl
         return content.Length > 300 ? content.Substring(0, 300) + "…" : content;
     }
 
-    private static (Brush Bg, Brush Fg, Brush Border) NodeColors(int depth)
+    private static (Brush Bg, Brush Fg, Brush Border) NodeColors(int depth, int branch)
     {
-        switch (depth)
+        if (depth == 0) return (RootBg, RootFg, RootBorder);
+        var p = BranchPalette[BranchIndex(branch)];
+        return depth switch
         {
-            case 0: return (RootBg, RootFg, RootBorder);
-            case 1: return (L1Bg, L1Fg, L1Border);
-            case 2: return (L2Bg, L2Fg, L2Border);
-            default: return (DeepBg, DeepFg, DeepBorder);
-        }
+            1 => (p.L1Bg, p.L1Fg, p.L1Border),
+            2 => (p.L2Bg, DeepFg, p.L2Border),
+            _ => (Brushes.White, DeepFg, p.DeepBorder)
+        };
+    }
+
+    private static Brush BranchEdge(int branch) => BranchPalette[BranchIndex(branch)].Edge;
+
+    private static int BranchIndex(int branch)
+    {
+        int n = BranchPalette.Length;
+        return ((branch % n) + n) % n;
     }
 
     private void ApplyBoxState(NodeVisual v)
     {
         if (v.Box == null) return;
-        var (_, _, border) = NodeColors(v.Depth);
+        var (_, _, border) = NodeColors(v.Depth, v.Branch);
         bool selected = v.Node.Id == _selectedId;
         v.Box.BorderBrush = selected ? SelectedBorder : border;
         v.Box.BorderThickness = new Thickness(selected ? 2 : 1);
@@ -476,7 +546,8 @@ public class MindMapView : UserControl
         var current = FindCurrent(v);
         if (current == null) return;
 
-        var child = new MindNode { Title = "新节点" };
+        int number = current.Node.Children.Count + 1;
+        var child = new MindNode { Title = MakeDefaultTitle(current.Node, number) };
         current.Node.Children.Add(child);
         _selectedId = child.Id;
         Changed?.Invoke();
@@ -490,13 +561,56 @@ public class MindMapView : UserControl
         var parent = current == null || _root == null ? null : FindParent(_root, current);
         if (current == null || parent == null) return;
 
-        var sibling = new MindNode { Title = "新节点" };
+        int number = parent.Node.Children.Count + 1;
+        var sibling = new MindNode { Title = MakeDefaultTitle(parent.Node, number) };
         int index = parent.Node.Children.IndexOf(current.Node);
         parent.Node.Children.Insert(index < 0 ? parent.Node.Children.Count : index + 1, sibling);
         _selectedId = sibling.Id;
         Changed?.Invoke();
         Rebuild();
         EditNodeById(sibling.Id);
+    }
+
+    /// <summary>
+    /// 生成规范化的默认标题：按“从根到父节点的序号路径 + 新节点序号”拼接，
+    /// 例：根的第二个子节点 → 新节点-2；它下面的第一个子节点 → 新节点-2-1。
+    /// 若同名已存在则追加 -2、-3 去重。
+    /// </summary>
+    private string MakeDefaultTitle(MindNode parent, int number)
+    {
+        var path = GetNodePath(parent);
+        path.Add(number);
+        string title = DefaultNodeName + "-" + string.Join("-", path);
+
+        var existing = new HashSet<string>();
+        foreach (var child in parent.Children ?? new List<MindNode>())
+            if (!string.IsNullOrWhiteSpace(child.Title)) existing.Add(child.Title.Trim());
+        if (!existing.Contains(title)) return title;
+
+        int n = 2;
+        while (existing.Contains(title + "-" + n)) n++;
+        return title + "-" + n;
+    }
+
+    /// <summary>返回 target 在树中的 1 基序号路径（根的路径为空）。</summary>
+    private List<int> GetNodePath(MindNode target)
+    {
+        var path = new List<int>();
+        if (_map?.Root == null || _map.Root.Id == target.Id) return path;
+        if (!TryBuildPath(_map.Root, target.Id, path)) path.Clear();
+        return path;
+    }
+
+    private static bool TryBuildPath(MindNode node, string targetId, List<int> path)
+    {
+        var children = node.Children ?? new List<MindNode>();
+        for (int i = 0; i < children.Count; i++)
+        {
+            path.Add(i + 1);
+            if (children[i].Id == targetId || TryBuildPath(children[i], targetId, path)) return true;
+            path.RemoveAt(path.Count - 1);
+        }
+        return false;
     }
 
     private void DeleteNode(NodeVisual v)

@@ -49,7 +49,7 @@
                                Margin="0,14,0,0"/>
                     <TextBlock Style="{StaticResource HelpItem}" Text="· 点右上角「导 出 ▾」选择格式："/>
                     <TextBlock Style="{StaticResource HelpItem}" Text="  - 图片（PNG）：整张导图，白底、2 倍分辨率，不受当前缩放影响，适合存档/发人"/>
-                    <TextBlock Style="{StaticResource HelpItem}" Text="  - 文本大纲（TXT）：按层级缩进输出标题与内容，适合粘贴给 AI 提需求或写文档"/>
+                    <TextBlock Style="{StaticResource HelpItem}" Text="  - YAML：树形结构输出 title / level / path（层级路径，如 1-2-1）/ content / children，适合给 AI 或程序当配置"/>
                 </StackPanel>
             </ScrollViewer>
         </Border>

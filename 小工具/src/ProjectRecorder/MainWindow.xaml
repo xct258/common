@@ -150,17 +150,10 @@
                                                        TextWrapping="Wrap" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Button>
-                                    <Button Style="{StaticResource GeneralCard}" Click="GTabShortcuts_Click">
-                                        <StackPanel>
-                                            <TextBlock Text="快捷路径" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
-                                            <TextBlock Text="常用文件夹与网址，一点即开 / 复制" FontSize="12" Foreground="#6B7280"
-                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
-                                        </StackPanel>
-                                    </Button>
                                     <Button Style="{StaticResource GeneralCard}" Click="GTabMindMap_Click">
                                         <StackPanel>
                                             <TextBlock Text="思维导图" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
-                                            <TextBlock Text="梳理思路，可导出图片 / 大纲" FontSize="12" Foreground="#6B7280"
+                                            <TextBlock Text="梳理思路，可导出图片 / YAML" FontSize="12" Foreground="#6B7280"
                                                        TextWrapping="Wrap" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Button>
@@ -596,7 +589,7 @@
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                     <Button x:Name="BtnMindExport" Content="导 出 ▾" Height="30"
                                             Style="{StaticResource BtnPrimary}" Click="BtnMindExport_Click"
-                                            ToolTip="导出图片（PNG）或文本大纲（TXT，适合给 AI）"/>
+                                            ToolTip="导出图片（PNG）或 YAML（适合给 AI）"/>
                                     <Button x:Name="BtnMindZoomOut" Content="－" Width="30" Height="30"
                                             Margin="8,0,0,0" Style="{StaticResource BtnStep}"
                                             Click="BtnMindZoomOut_Click"/>

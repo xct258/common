@@ -6,41 +6,90 @@ using ProjectRecorder.Models;
 namespace ProjectRecorder.Services;
 
 /// <summary>
-/// 思维导图文本大纲导出：Markdown 风格缩进列表，标题用「- 」逐层缩进，
-/// 节点内容跟随在标题下方（同一缩进、无「-」前缀），方便直接粘贴给 AI 当需求描述。
+/// 思维导图 YAML 导出：树形结构输出 title / level（深度，根为 0）/ path（层级路径编号，
+/// 如 1-2-1）/ content / children；层级、路径、内容字段始终保留，方便给 AI 或程序当配置读取。
 /// </summary>
 public static class MindMapOutlineExporter
 {
-    /// <summary>导出为 UTF-8（带 BOM）文本，返回节点总数。</summary>
-    public static int ExportTxt(string path, MindMap map)
+    /// <summary>导出为 UTF-8（带 BOM）的 YAML 文件，返回节点总数。</summary>
+    public static int ExportYaml(string path, MindMap map)
     {
         var sb = new StringBuilder();
-        sb.Append("# ").AppendLine(NormalizeLine(map.Name));
-        sb.AppendLine();
-        AppendNode(sb, map.Root, 0);
+        sb.Append("title: ").AppendLine(YamlString(map.Name));
+        sb.AppendLine("root:");
+        AppendRoot(sb, map.Root, 0, "1");
 
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
         return CountNodes(map.Root);
     }
 
-    private static void AppendNode(StringBuilder sb, MindNode? node, int depth)
+    private static void AppendRoot(StringBuilder sb, MindNode? node, int level, string nodePath)
     {
         if (node == null) return;
+        sb.Append("  title: ").AppendLine(YamlString(DisplayTitle(node)));
+        sb.Append("  level: ").Append(level).AppendLine();
+        sb.Append("  path: ").AppendLine(YamlString(nodePath));
+        sb.Append("  content: ").AppendLine(YamlString(TrimContent(node)));
 
-        string indent = new string(' ', depth * 2);
-        string title = (node.Title ?? string.Empty).Trim();
-        sb.Append(indent).Append("- ").AppendLine(title.Length == 0 ? "未命名" : title);
-
-        string content = (node.Content ?? string.Empty).Trim();
-        if (content.Length > 0)
+        var children = node.Children ?? new List<MindNode>();
+        if (children.Count > 0)
         {
-            string bodyIndent = indent + "  ";
-            foreach (string line in content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
-                sb.Append(bodyIndent).AppendLine(line);
+            sb.AppendLine("  children:");
+            for (int i = 0; i < children.Count; i++)
+                AppendItem(sb, children[i], 4, level + 1, nodePath + "-" + (i + 1));
         }
+    }
 
-        foreach (var child in node.Children ?? new List<MindNode>())
-            AppendNode(sb, child, depth + 1);
+    private static void AppendItem(StringBuilder sb, MindNode node, int indent, int level, string nodePath)
+    {
+        string pad = new string(' ', indent);
+        string fieldPad = new string(' ', indent + 2);
+
+        sb.Append(pad).Append("- title: ").AppendLine(YamlString(DisplayTitle(node)));
+        sb.Append(fieldPad).Append("level: ").Append(level).AppendLine();
+        sb.Append(fieldPad).Append("path: ").AppendLine(YamlString(nodePath));
+        sb.Append(fieldPad).Append("content: ").AppendLine(YamlString(TrimContent(node)));
+
+        var children = node.Children ?? new List<MindNode>();
+        if (children.Count > 0)
+        {
+            sb.Append(fieldPad).AppendLine("children:");
+            for (int i = 0; i < children.Count; i++)
+                AppendItem(sb, children[i], indent + 4, level + 1, nodePath + "-" + (i + 1));
+        }
+    }
+
+    private static string TrimContent(MindNode node)
+        => (node.Content ?? string.Empty).Trim();
+
+    private static string DisplayTitle(MindNode node)
+    {
+        string title = (node.Title ?? string.Empty).Trim();
+        return title.Length == 0 ? "未命名" : title;
+    }
+
+    /// <summary>输出合法的 YAML 双引号字符串（转义 \ " 换行 制表符等）。</summary>
+    private static string YamlString(string? text)
+    {
+        string t = (text ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n');
+        var sb = new StringBuilder(t.Length + 2);
+        sb.Append('"');
+        foreach (char c in t)
+        {
+            switch (c)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\t': sb.Append("\\t"); break;
+                default:
+                    if (c < 0x20) sb.Append("\\x").Append(((int)c).ToString("x2"));
+                    else sb.Append(c);
+                    break;
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
     }
 
     private static int CountNodes(MindNode? node)
@@ -51,7 +100,4 @@ public static class MindMapOutlineExporter
             count += CountNodes(child);
         return count;
     }
-
-    private static string NormalizeLine(string? text)
-        => (text ?? string.Empty).Trim().Replace('\r', ' ').Replace('\n', ' ');
 }

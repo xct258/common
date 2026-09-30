@@ -1,7 +1,10 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
@@ -30,8 +33,85 @@ public partial class App : Application
         }
     }
 
+    /// <summary>单实例互斥锁：避免重复启动多个 exe 同时读写同一批数据文件。</summary>
+    private static Mutex? _singleInstanceMutex;
+    private const string SingleInstanceName = @"Local\ProjectRecorder.SingleInstance";
+    private const int SW_RESTORE = 9;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    /// <summary>尝试取得单实例锁；已有实例在运行时返回 false。</summary>
+    private static bool TryLockSingleInstance()
+    {
+        try
+        {
+            _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceName, out bool createdNew);
+            if (createdNew) return true;
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            return false;
+        }
+        catch
+        {
+            // 拿不到锁（异常）时不阻止启动，避免误伤
+            return true;
+        }
+    }
+
+    /// <summary>已有实例在运行时：还原并置前它的窗口，然后本进程退出。</summary>
+    private static void ActivateExistingInstance()
+    {
+        try
+        {
+            using var current = Process.GetCurrentProcess();
+            foreach (var p in Process.GetProcessesByName(current.ProcessName))
+            {
+                using (p)
+                {
+                    if (p.Id == current.Id) continue;
+                    IntPtr h = p.MainWindowHandle;
+                    if (h == IntPtr.Zero) continue;
+                    ShowWindow(h, SW_RESTORE);
+                    SetForegroundWindow(h);
+                    break;
+                }
+            }
+        }
+        catch
+        {
+            // 置前失败不影响退出
+        }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+        }
+        catch
+        {
+            // 未持有/已释放时忽略
+        }
+        _singleInstanceMutex?.Dispose();
+        _singleInstanceMutex = null;
+        base.OnExit(e);
+    }
+
     private void Application_Startup(object sender, StartupEventArgs e)
     {
+        // 只允许一个 exe 进程：重复启动时激活已有窗口并立即退出
+        if (!TryLockSingleInstance())
+        {
+            ActivateExistingInstance();
+            Shutdown();
+            return;
+        }
+
         try
         {
             AppDomain.CurrentDomain.UnhandledException += (_, ev) =>
