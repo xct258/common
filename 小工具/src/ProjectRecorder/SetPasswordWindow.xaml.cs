@@ -42,19 +42,23 @@ public partial class SetPasswordWindow : Window
         string pwd = PwdBox.Password ?? string.Empty;
         string confirm = PwdConfirm.Password ?? string.Empty;
 
-        if (pwd.Length == 0)
+        // 与登录一致：去首尾空白 + 不区分大小写
+        string norm = AuthService.Normalize(pwd);
+        string normConfirm = AuthService.Normalize(confirm);
+
+        if (norm.Length == 0)
         {
             TxtError.Text = "请输入密码。";
             PwdBox.Focus();
             return;
         }
-        if (pwd.Length < 4)
+        if (norm.Length < 4)
         {
             TxtError.Text = "密码至少 4 位。";
             PwdBox.Focus();
             return;
         }
-        if (!string.Equals(pwd, confirm, StringComparison.Ordinal))
+        if (!string.Equals(norm, normConfirm, StringComparison.Ordinal))
         {
             TxtError.Text = "两次输入的密码不一致。";
             PwdConfirm.Clear();
@@ -64,8 +68,8 @@ public partial class SetPasswordWindow : Window
 
         try
         {
-            AuthService.SetPassword(pwd);
-            AuthService.SessionPassword = AuthService.Normalize(pwd);
+            AuthService.SetPassword(norm);
+            AuthService.SessionPassword = norm;
         }
         catch (Exception ex)
         {
