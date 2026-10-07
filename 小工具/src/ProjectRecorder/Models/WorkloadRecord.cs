@@ -20,6 +20,8 @@ public class WorkloadRecord
     [DataMember] public string Shift { get; set; } = string.Empty;
     [DataMember] public int Quantity { get; set; }
     [DataMember] public string Notes { get; set; } = string.Empty;
+    /// <summary>是否补录（补录只选日期+班次，无具体执行时间；导出明细“执行时间”列显示“补录”）。</summary>
+    [DataMember] public bool IsBackfill { get; set; }
     [DataMember] public DateTime CreatedTime { get; set; } = DateTime.Now;
 
     public static string GetShiftName(DateTime time)

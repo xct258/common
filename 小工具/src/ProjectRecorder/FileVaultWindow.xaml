@@ -1,0 +1,84 @@
+<Window x:Class="ProjectRecorder.FileVaultWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="加密文件" Height="650" Width="900"
+        MinHeight="420" MinWidth="680"
+        WindowStartupLocation="CenterOwner" Background="#F8FAFC">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="4,4,4,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="分组：" FontSize="13" FontWeight="Bold"
+                       Foreground="#374151" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <ComboBox x:Name="CmbGroup" Width="150" Height="30"
+                          VerticalContentAlignment="Center" ToolTip="按分组查看/导入加密文件"
+                          SelectionChanged="CmbGroup_SelectionChanged"/>
+                <Button x:Name="BtnManageGroups" Content="管理分组" Height="30" Margin="8,0,0,0"
+                        Style="{StaticResource BtnGhost}" Click="BtnManageGroups_Click"
+                        ToolTip="新建 / 重命名 / 删除分组"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="14,0,12,0">
+                <TextBlock x:Name="TxtFileVaultInfo"
+                           Text="导入后 AES-256 加密存本地，绝不明文落盘；导出的是解密副本，请妥善保管"
+                           FontSize="12" Foreground="#6B7280"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <Button x:Name="BtnImportFile" Grid.Column="3" Content="＋ 导入文件"
+                    Style="{StaticResource BtnPrimary}" Click="BtnImportFile_Click"
+                    ToolTip="导入到当前分组；可多选；单文件上限 200MB"/>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <TextBlock x:Name="TxtFileEmpty"
+                       Text="本分组暂无加密文件，点右上角“＋ 导入文件”（支持多选、任意类型）"
+                       Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                       Margin="20" Visibility="Collapsed"/>
+            <ListBox x:Name="LstEncryptedFiles" SelectionMode="Single"
+                     Style="{StaticResource CleanList}"
+                     PreviewMouseRightButtonDown="LstEncryptedFiles_RightButtonDown"
+                     MouseDoubleClick="LstEncryptedFiles_MouseDoubleClick"
+                     ScrollViewer.CanContentScroll="False"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ContextMenu>
+                    <ContextMenu Opened="EncryptedFilesMenu_Opened">
+                        <MenuItem x:Name="MenuEditEncryptedFile" Header="编辑"
+                                  Click="MenuEditEncryptedFile_Click"
+                                  ToolTip="支持 .md / .sh / .py；双击文件也可打开"/>
+                        <Separator/>
+                        <MenuItem Header="导出解密副本" Click="MenuExportEncryptedFile_Click"/>
+                        <MenuItem Header="修改分组" Click="MenuMoveEncryptedFileGroup_Click"/>
+                        <MenuItem Header="重命名" Click="MenuRenameEncryptedFile_Click"/>
+                        <MenuItem Header="删除" Click="MenuDeleteEncryptedFile_Click"/>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,3" Padding="10,8" Style="{StaticResource CardBorder}"
+                                ToolTip="双击或右键：编辑（.md / .sh / .py）；支持导出解密副本 / 重命名 / 删除">
+                            <StackPanel>
+                                <TextBlock Text="{Binding DisplayName}" FontSize="14"
+                                           FontWeight="Bold" Foreground="#1F2937"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock FontSize="11" Foreground="#6B7280" Margin="0,2,0,0">
+                                    <Run Text="{Binding SizeText, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding DisplayTime, Mode=OneWay, StringFormat=yyyy-MM-dd HH:mm}"/><Run Text=" "/><Run Text="{Binding DisplayTimeLabel, Mode=OneWay}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</Window>

@@ -12,6 +12,8 @@ namespace ProjectRecorder.Models;
 public class EncryptedFile
 {
     [DataMember] public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>所属项目分组（空视为「通用」）。</summary>
+    [DataMember] public string ProjectName { get; set; } = string.Empty;
     /// <summary>显示名（默认原文件名，可重命名）。</summary>
     [DataMember] public string Name { get; set; } = string.Empty;
     /// <summary>原文件名（导出解密副本时的默认文件名）。</summary>

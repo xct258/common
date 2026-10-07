@@ -141,8 +141,9 @@ public partial class App : Application
             else
             {
                 AutoLoginStore.Disable();
-                var login = new LoginWindow();
-                bool? ok = login.ShowDialog();
+                // 首次使用先设置密码（写入数据目录），已设置过则登录
+                Window gate = AuthService.HasPassword ? new LoginWindow() : new SetPasswordWindow();
+                bool? ok = gate.ShowDialog();
                 if (ok != true)
                 {
                     Shutdown();

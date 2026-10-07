@@ -171,7 +171,7 @@ public static class ExcelExporter
                 d.WorkDate.ToString("yyyy-MM-dd"),
                 d.Shift,
                 d.Quantity.ToString(CultureInfo.InvariantCulture),
-                d.CreatedTime.ToString("yyyy-MM-dd HH:mm:ss")
+                d.IsBackfill ? "补录" : d.CreatedTime.ToString("yyyy-MM-dd HH:mm:ss")
             };
             rows.Add(cells);
             for (int c = 0; c < cells.Length; c++) w[c] = Math.Max(w[c], DisplayWidth(cells[c]));

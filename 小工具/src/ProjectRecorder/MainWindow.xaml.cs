@@ -22,24 +22,28 @@ namespace ProjectRecorder;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private enum GeneralTab { Home, Export, MindMap, Note, FileVault }
+    private enum GeneralTab { Home, Export, Note }
 
     private readonly string _password;
     private List<string> _projects = new();
     private List<ProcessItem> _processes = new();
     private List<PathShortcut> _shortcuts = new();
-    private readonly Dictionary<string, CodeEditorWindow> _openEditors = new();
-    private List<MindMap> _mindMaps = new();
+    private MindMapWindow? _mindMapWindow;
+    private FileVaultWindow? _fileVaultWindow;
     private List<NoteItem> _notes = new();
     private string? _currentProject;
     private string? _currentProcessId;
-    private string? _currentMindMapId;
     private NoteItem? _currentNote;
     private bool _noteLoading;
     private bool _notesDirty;
     private GeneralTab _generalTab = GeneralTab.Home;
     private DateTime _exportDate = DateTime.Today;
     private string _shiftKey = string.Empty;
+    // 工作量页当前操作的班次：可点顶部标题切换为以往班次补录
+    private DateTime _workMoment = DateTime.Now;
+    private DateTime _workDate = DateTime.Today;
+    private string _workShift = WorkloadRecord.DayShift;
+    private bool _workBackfill;
     private bool _exportToday = true;
     private bool _autoLogin;
     private bool _autoLoginUiLoading;
@@ -54,9 +58,6 @@ public partial class MainWindow : Window
         InitializeComponent();
         _password = AuthService.SessionPassword
             ?? throw new InvalidOperationException("未登录，拒绝访问。");
-        MindView.Changed += OnMindMapChanged;
-        MindView.ZoomChanged += scale => TxtMindZoom.Text = $"{Math.Round(scale * 100)}%";
-        MindView.Monitor = _monitor;
         _shortcutHintTimer.Tick += (_, _) =>
         {
             _shortcutHintTimer.Stop();
@@ -142,6 +143,7 @@ public partial class MainWindow : Window
 
         // 同步“记住登录”状态（登录页勾选过或自动登录进来时为勾选）
         _autoLogin = AutoLoginStore.IsEnabled;
+        _monitor.HardExitEnabled = !_autoLogin;
         _autoLoginUiLoading = true;
         ChkAutoLogin.IsChecked = _autoLogin;
         _autoLoginUiLoading = false;
@@ -181,6 +183,7 @@ public partial class MainWindow : Window
             {
                 AutoLoginStore.Enable(password!);
                 _autoLogin = true;
+                _monitor.HardExitEnabled = false;
             }
             catch (Exception ex)
             {
@@ -194,6 +197,7 @@ public partial class MainWindow : Window
         {
             AutoLoginStore.Disable();
             _autoLogin = false;
+            _monitor.HardExitEnabled = true;
         }
 
         _monitor.Start();
@@ -370,8 +374,7 @@ public partial class MainWindow : Window
     private void GTabMindMap_Click(object sender, RoutedEventArgs e)
     {
         _monitor.NotifyActivity();
-        _generalTab = GeneralTab.MindMap;
-        ShowGeneralTab();
+        OpenMindMapWindow();
     }
 
     private void GTabNote_Click(object sender, RoutedEventArgs e)
@@ -384,8 +387,37 @@ public partial class MainWindow : Window
     private void GTabFiles_Click(object sender, RoutedEventArgs e)
     {
         _monitor.NotifyActivity();
-        _generalTab = GeneralTab.FileVault;
-        ShowGeneralTab();
+        OpenFileVaultWindow();
+    }
+
+    // 思维导图独立窗口（顶部按项目分组，可与主窗口同时操作）
+    private void OpenMindMapWindow()
+    {
+        if (_mindMapWindow != null && _mindMapWindow.IsLoaded)
+        {
+            if (_mindMapWindow.WindowState == WindowState.Minimized)
+                _mindMapWindow.WindowState = WindowState.Normal;
+            _mindMapWindow.Activate();
+            return;
+        }
+        _mindMapWindow = new MindMapWindow(_monitor) { Owner = this };
+        _mindMapWindow.Closed += (_, _) => _mindMapWindow = null;
+        _mindMapWindow.Show();
+    }
+
+    // 加密文件独立窗口（顶部按项目分组，可与主窗口同时操作）
+    private void OpenFileVaultWindow()
+    {
+        if (_fileVaultWindow != null && _fileVaultWindow.IsLoaded)
+        {
+            if (_fileVaultWindow.WindowState == WindowState.Minimized)
+                _fileVaultWindow.WindowState = WindowState.Normal;
+            _fileVaultWindow.Activate();
+            return;
+        }
+        _fileVaultWindow = new FileVaultWindow(_monitor) { Owner = this };
+        _fileVaultWindow.Closed += (_, _) => _fileVaultWindow = null;
+        _fileVaultWindow.Show();
     }
 
     // 按记录的入口显示通用内容（各功能为独立整页，顶部显示返回 + 标题）
@@ -402,17 +434,9 @@ public partial class MainWindow : Window
                 _exportDate = WorkloadRecord.GetShiftDate(DateTime.Now);
                 RefreshExportDateButton();
                 break;
-            case GeneralTab.MindMap:
-                ShowPage("思维导图");
-                ShowMindMapTab();
-                break;
             case GeneralTab.Note:
                 ShowPage("笔记");
                 ShowNoteTab();
-                break;
-            case GeneralTab.FileVault:
-                ShowPage("加密文件");
-                ShowFileTab();
                 break;
             default:
                 ShowGeneralHome();
@@ -445,9 +469,7 @@ public partial class MainWindow : Window
         ViewWorkloadTab.Visibility = Visibility.Collapsed;
         ViewExportTab.Visibility = Visibility.Collapsed;
         ViewShortcutTab.Visibility = Visibility.Collapsed;
-        ViewMindMapTab.Visibility = Visibility.Collapsed;
         ViewNoteTab.Visibility = Visibility.Collapsed;
-        ViewFileTab.Visibility = Visibility.Collapsed;
         ViewGeneralHome.Visibility = Visibility.Collapsed;
     }
 
@@ -1041,7 +1063,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // 工作量页：只显示班次日期与白/夜班
+    // 工作量页：显示当前操作的班次日期与白/夜班，点标题可切换班次补录
     private void ShowWorkloadTab()
     {
         SaveNoteNow();
@@ -1049,8 +1071,57 @@ public partial class MainWindow : Window
         ViewWorkloadTab.Visibility = Visibility.Visible;
 
         var now = DateTime.Now;
-        TxtWorkShift.Text = $"{WorkloadRecord.GetShiftDate(now):yyyy-MM-dd} {WorkloadRecord.GetShiftName(now)}";
+        _workMoment = now;
+        _workDate = WorkloadRecord.GetShiftDate(now);
+        _workShift = WorkloadRecord.GetShiftName(now);
+        _workBackfill = false;
         _shiftKey = CurrentShiftKey();
+        UpdateWorkShiftButton();
+        RefreshWorkCards();
+    }
+
+    private bool IsCurrentWorkShift()
+    {
+        var now = DateTime.Now;
+        return _workDate.Date == WorkloadRecord.GetShiftDate(now).Date
+               && _workShift == WorkloadRecord.GetShiftName(now);
+    }
+
+    private void UpdateWorkShiftButton()
+    {
+        BtnWorkShift.Content = $"{_workDate:yyyy-MM-dd} {_workShift}";
+        var vis = (_workBackfill || !IsCurrentWorkShift()) ? Visibility.Visible : Visibility.Collapsed;
+        TxtWorkBackfill.Visibility = vis;
+        BtnWorkNow.Visibility = vis;
+    }
+
+    // 点顶部班次标题：只选日期+班次补录，之后卡片添加即记为补录（导出明细标记“补录”）
+    private void BtnWorkShift_Click(object sender, RoutedEventArgs e)
+    {
+        _monitor.NotifyActivity();
+        var now = DateTime.Now;
+        var dlg = new ShiftPickerDialog(now, WorkloadRecord.GetShiftName(now), _monitor) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        _workDate = dlg.SelectedDate.Date;
+        _workShift = dlg.SelectedShift;
+        _workBackfill = true;
+        // 补录无具体时间：白班按 08:30、夜班按 21:00 占位，仅用于排序/展示
+        _workMoment = _workDate.AddHours(_workShift == WorkloadRecord.DayShift ? 8.5 : 21);
+        UpdateWorkShiftButton();
+        RefreshWorkCards();
+    }
+
+    // 快速回到当前班次（结束补录）
+    private void BtnWorkNow_Click(object sender, RoutedEventArgs e)
+    {
+        _monitor.NotifyActivity();
+        var now = DateTime.Now;
+        _workMoment = now;
+        _workDate = WorkloadRecord.GetShiftDate(now);
+        _workShift = WorkloadRecord.GetShiftName(now);
+        _workBackfill = false;
+        UpdateWorkShiftButton();
         RefreshWorkCards();
     }
 
@@ -1145,7 +1216,7 @@ public partial class MainWindow : Window
         public WorkloadProcess Process { get; set; } = null!;
         /// <summary>本班次数量（换班自动从 0 重新统计）。</summary>
         public int ShiftQty { get; set; }
-        /// <summary>本班最后一次执行时间（HH:mm:ss），无记录时为“暂无”。</summary>
+        /// <summary>本班最后一次执行时间（HH:mm:ss，补录时为“补录”），无记录时为“暂无”。</summary>
         public string LastTimeText { get; set; } = "暂无";
     }
 
@@ -1168,9 +1239,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 只统计当前班次：班次日期 + 白/夜班都一致；换班次后卡片自动归零重新统计
-        DateTime shiftDate = WorkloadRecord.GetShiftDate(DateTime.Now);
-        string shiftName = WorkloadRecord.GetShiftName(DateTime.Now);
+        // 只统计当前操作的班次：班次日期 + 白/夜班都一致；点标题可切换班次
+        DateTime shiftDate = _workDate;
+        string shiftName = _workShift;
 
         var cards = procs
             .OrderBy(x => x.Order)
@@ -1182,12 +1253,16 @@ public partial class MainWindow : Window
                                 && r.WorkDate.Date == shiftDate
                                 && r.Shift == shiftName)
                     .ToList();
-                DateTime last = mine.Count == 0 ? default : mine.Max(r => r.CreatedTime);
+                var last = mine.OrderByDescending(r => r.CreatedTime).FirstOrDefault();
+                // 补录记录没有具体时间：显示“补录”，不显示占位时间
+                string lastText = last == null
+                    ? "暂无"
+                    : last.IsBackfill ? "补录" : last.CreatedTime.ToString("HH:mm:ss");
                 return new WorkCard
                 {
                     Process = p,
                     ShiftQty = Math.Max(0, mine.Sum(r => r.Quantity)),
-                    LastTimeText = last == default ? "暂无" : last.ToString("HH:mm:ss")
+                    LastTimeText = lastText
                 };
             }).ToList();
 
@@ -1343,11 +1418,12 @@ public partial class MainWindow : Window
             Id = Guid.NewGuid().ToString(),
             ProjectName = _currentProject!,
             ProcessName = card.Process.ProcessName,
-            WorkDate = WorkloadRecord.GetShiftDate(DateTime.Now),
-            Shift = WorkloadRecord.GetShiftName(DateTime.Now),
+            WorkDate = _workDate,
+            Shift = _workShift,
             Quantity = qty,
             Notes = string.Empty,
-            CreatedTime = DateTime.Now
+            IsBackfill = _workBackfill,
+            CreatedTime = (_workBackfill || !IsCurrentWorkShift()) ? _workMoment : DateTime.Now
         };
 
         try
@@ -1376,6 +1452,43 @@ public partial class MainWindow : Window
             return;
         }
         item.IsSelected = true;
+    }
+
+    // 右键卡片 →「查看执行明细」：弹窗列出该工序本班的每次执行时间（含补录标记）
+    private void MenuWProcessDetail_Click(object sender, RoutedEventArgs e)
+    {
+        _monitor.NotifyActivity();
+        if (LstWorkProcess.SelectedItem is not WorkCard card)
+        {
+            MessageBox.Show("请先右键点选要查看的工序。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        List<WorkloadRecord> records;
+        try
+        {
+            records = DataStore.LoadWorkload(_password)
+                .Where(x => x.ProjectName == _currentProject
+                            && x.ProcessName == card.Process.ProcessName
+                            && x.WorkDate.Date == _workDate
+                            && x.Shift == _workShift)
+                .ToList();
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "数据错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        if (records.Count == 0)
+        {
+            MessageBox.Show("该工序在本班暂无执行记录。", "执行明细",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        new WorkDetailDialog(_currentProject ?? string.Empty, card.Process.ProcessName,
+            _workDate, _workShift, records, _monitor) { Owner = this }.ShowDialog();
     }
 
     private void MoveWProcess(object sender, int delta)
@@ -1884,681 +1997,4 @@ public partial class MainWindow : Window
         RefreshNoteList();
     }
 
-    // ---------- 加密文件（通用模块独立功能） ----------
-
-    private const long MaxImportFileSize = 200L * 1024 * 1024;
-
-    private void ShowFileTab()
-    {
-        HideAllViews();
-        ViewFileTab.Visibility = Visibility.Visible;
-        RefreshEncryptedFiles();
-    }
-
-    private void RefreshEncryptedFiles()
-    {
-        List<EncryptedFile> files;
-        try
-        {
-            files = DataStore.LoadEncryptedFiles(_password);
-        }
-        catch (InvalidOperationException ex)
-        {
-            MessageBox.Show(ex.Message, "数据错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            files = new List<EncryptedFile>();
-        }
-
-        LstEncryptedFiles.ItemsSource = null;
-        LstEncryptedFiles.ItemsSource = files;
-        TxtFileEmpty.Visibility = files.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        long total = files.Sum(x => x.Size);
-        TxtFileVaultInfo.Text = files.Count == 0
-            ? "加密文件：导入后 AES-256 加密存本地，绝不明文落盘；导出的是解密副本，请妥善保管"
-            : $"共 {files.Count} 个加密文件，合计 {EncryptedFile.FormatSize(total)}；导出的是解密副本，请妥善保管";
-    }
-
-    private void BtnImportFile_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        var dlg = new OpenFileDialog
-        {
-            Title = "选择要加密保存的文件",
-            Multiselect = true,
-            Filter = "所有文件|*.*"
-        };
-        if (dlg.ShowDialog(this) != true) return;
-
-        List<EncryptedFile> files;
-        try
-        {
-            files = DataStore.LoadEncryptedFiles(_password);
-        }
-        catch (InvalidOperationException ex)
-        {
-            MessageBox.Show(ex.Message, "数据错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        var added = new List<EncryptedFile>();
-        var overwritten = new List<string>();
-        var skipped = new List<string>();
-        var errors = new List<string>();
-        DuplicateChoice? batchChoice = null;
-        var knownNames = new Dictionary<string, EncryptedFile>(StringComparer.OrdinalIgnoreCase);
-        foreach (var f in files) knownNames[f.Name] = f;
-        foreach (string path in dlg.FileNames)
-        {
-            try
-            {
-                var info = new FileInfo(path);
-                if (info.Length > MaxImportFileSize)
-                {
-                    errors.Add($"{info.Name}：超过 {EncryptedFile.FormatSize(MaxImportFileSize)}，未导入");
-                    continue;
-                }
-
-                byte[] data = File.ReadAllBytes(path);
-                var now = DateTime.Now;
-                if (knownNames.TryGetValue(info.Name, out EncryptedFile? existing))
-                {
-                    DuplicateChoice choice;
-                    if (batchChoice.HasValue)
-                    {
-                        choice = batchChoice.Value;
-                    }
-                    else
-                    {
-                        var dd = new DuplicateFileDialog(info.Name, _monitor) { Owner = this };
-                        if (dd.ShowDialog() != true)
-                        {
-                            skipped.Add($"{info.Name}（跳过）");
-                            continue;
-                        }
-                        choice = dd.Choice;
-                        if (dd.ApplyToAll) batchChoice = choice;
-                    }
-                    if (choice == DuplicateChoice.Skip)
-                    {
-                        skipped.Add($"{info.Name}（跳过）");
-                        continue;
-                    }
-                    if (choice == DuplicateChoice.Overwrite)
-                    {
-                        DataStore.SaveEncryptedFileContent(existing.Id, data, _password);
-                        existing.Size = info.Length;
-                        existing.OriginalName = info.Name;
-                        existing.UpdatedTime = now;
-                        overwritten.Add(info.Name);
-                        continue;
-                    }
-                    // 保留两者：走下面的新增流程
-                }
-                var item = new EncryptedFile
-                {
-                    Name = info.Name,
-                    OriginalName = info.Name,
-                    Size = info.Length,
-                    CreatedTime = now,
-                    UpdatedTime = now
-                };
-                DataStore.SaveEncryptedFileContent(item.Id, data, _password);
-                added.Add(item);
-                files.Add(item);
-                knownNames[item.Name] = item;
-            }
-            catch (Exception ex)
-            {
-                errors.Add($"{Path.GetFileName(path)}：{ex.Message}");
-            }
-        }
-
-        if (added.Count > 0 || overwritten.Count > 0)
-        {
-            try
-            {
-                DataStore.SaveEncryptedFiles(files, _password);
-            }
-            catch (Exception ex)
-            {
-                // 元数据没存上：删掉刚写入的新加密文件，避免留下没有记录的垃圾
-                // （已覆盖的旧文件内容无法回退，仍保留新内容）
-                foreach (var item in added)
-                {
-                    files.Remove(item);
-                    DataStore.DeleteEncryptedFileContent(item.Id);
-                }
-                MessageBox.Show($"保存失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-        }
-
-        RefreshEncryptedFiles();
-        var summary = new List<string>();
-        if (added.Count > 0) summary.Add($"已加密保存 {added.Count} 个文件");
-        if (overwritten.Count > 0) summary.Add($"覆盖 {overwritten.Count} 个文件");
-        if (skipped.Count > 0) summary.Add($"跳过 {skipped.Count} 个文件");
-        if (errors.Count > 0)
-        {
-            summary.Add("以下文件未导入：\n" + string.Join("\n", errors));
-            MessageBox.Show(string.Join("\n", summary), "导入",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        else if (summary.Count > 0)
-        {
-            MessageBox.Show(string.Join("，", summary) + "。", "导入",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-    }
-
-    private void LstEncryptedFiles_RightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        var item = FindListBoxItem(e.OriginalSource as DependencyObject);
-        if (item == null)
-        {
-            e.Handled = true;
-            return;
-        }
-        item.IsSelected = true;
-    }
-
-    private List<EncryptedFile> CurrentEncryptedFiles()
-        => LstEncryptedFiles.ItemsSource as List<EncryptedFile> ?? new List<EncryptedFile>();
-
-    // 导出解密副本（明文）：仅这一个出口，请自行妥善保管
-    private void MenuExportEncryptedFile_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (LstEncryptedFiles.SelectedItem is not EncryptedFile item)
-        {
-            MessageBox.Show("请先右键点选要导出的文件。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        string defaultName = string.IsNullOrWhiteSpace(item.OriginalName) ? item.DisplayName : item.OriginalName;
-        var dlg = new SaveFileDialog
-        {
-            Title = "导出解密副本（明文，请妥善保管）",
-            FileName = defaultName,
-            Filter = "所有文件|*.*"
-        };
-        if (dlg.ShowDialog(this) != true) return;
-
-        try
-        {
-            byte[] data = DataStore.LoadEncryptedFileContent(item.Id, _password);
-            File.WriteAllBytes(dlg.FileName, data);
-            MessageBox.Show($"已导出解密副本（明文文件）：\n{dlg.FileName}", "导出",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"导出失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void MenuRenameEncryptedFile_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (LstEncryptedFiles.SelectedItem is not EncryptedFile item)
-        {
-            MessageBox.Show("请先右键点选要重命名的文件。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var dlg = new NameInputDialog("重命名加密文件", "显示名称 *", item.Name, _monitor) { Owner = this };
-        if (dlg.ShowDialog() != true || dlg.Value == item.Name) return;
-
-        string oldName = item.Name;
-        item.Name = dlg.Value;
-        try
-        {
-            DataStore.SaveEncryptedFiles(CurrentEncryptedFiles(), _password);
-        }
-        catch (Exception ex)
-        {
-            item.Name = oldName;
-            MessageBox.Show($"保存失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        RefreshEncryptedFiles();
-    }
-
-    private void MenuDeleteEncryptedFile_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (LstEncryptedFiles.SelectedItem is not EncryptedFile item)
-        {
-            MessageBox.Show("请先右键点选要删除的文件。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var r = MessageBox.Show($"确定删除加密文件「{item.DisplayName}」吗？\n删除后无法恢复（建议先导出解密副本备份）。",
-            "确认删除", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (r != MessageBoxResult.OK) return;
-        var files = CurrentEncryptedFiles();
-        files.Remove(item);
-        try
-        {
-            DataStore.SaveEncryptedFiles(files, _password);
-        }
-        catch (Exception ex)
-        {
-            files.Add(item);
-            MessageBox.Show($"删除失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        DataStore.DeleteEncryptedFileContent(item.Id);
-        RefreshEncryptedFiles();
-    }
-
-    // 仅 .md/.sh/.py 支持在新窗口在线编辑，右键菜单按选中项启用/置灰
-    private void EncryptedFilesMenu_Opened(object sender, RoutedEventArgs e)
-    {
-        MenuEditEncryptedFile.IsEnabled = LstEncryptedFiles.SelectedItem is EncryptedFile item && item.CanEdit;
-    }
-
-    private void MenuEditEncryptedFile_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (LstEncryptedFiles.SelectedItem is not EncryptedFile item)
-        {
-            MessageBox.Show("请先右键点选要编辑的文件。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        OpenEncryptedFileEditor(item);
-    }
-
-    private void LstEncryptedFiles_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (LstEncryptedFiles.SelectedItem is EncryptedFile item && item.CanEdit)
-        {
-            _monitor.NotifyActivity();
-            OpenEncryptedFileEditor(item);
-        }
-    }
-
-    private void OpenEncryptedFileEditor(EncryptedFile item)
-    {
-        if (!item.CanEdit)
-        {
-            MessageBox.Show($"「{item.DisplayName}」不是 .md / .sh / .py 文件，暂不支持在线编辑。\n" +
-                            "可先导出解密副本，用其它工具编辑后再导入。",
-                "提示", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        // 同一文件已打开：激活原窗口，避免多窗口编辑同一文件互相覆盖
-        if (_openEditors.TryGetValue(item.Id, out var opened))
-        {
-            if (opened.WindowState == WindowState.Minimized)
-                opened.WindowState = WindowState.Normal;
-            opened.Activate();
-            return;
-        }
-
-        byte[] data;
-        try
-        {
-            data = DataStore.LoadEncryptedFileContent(item.Id, _password);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"打开失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        try
-        {
-            // 非模态独立窗口：编辑时仍可操作主窗口
-            var editor = new CodeEditorWindow(item, data, _password, _monitor, OnEditorSaved);
-            _openEditors[item.Id] = editor;
-            editor.Closed += (_, _) =>
-            {
-                _openEditors.Remove(item.Id);
-                if (IsLoaded) RefreshEncryptedFiles();
-            };
-            editor.Show();
-        }
-        catch (Exception ex)
-        {
-            // 编辑器加载失败只弹提示、不退出主程序；详情记入 error.log（exe 同级目录）
-            _openEditors.Remove(item.Id);
-            App.ReportFatal("在线编辑", ex);
-            return;
-        }
-    }
-
-    // 编辑器保存内容后回调：刷新文件大小等元数据（内容本身已在编辑器里加密写回）
-    private void OnEditorSaved(EncryptedFile item)
-    {
-        var files = CurrentEncryptedFiles();
-        // 编辑器持有的可能是旧列表实例；按 Id 同步元数据，避免刷新列表后大小/时间丢失
-        var current = files.FirstOrDefault(x => x.Id == item.Id);
-        if (current != null && !ReferenceEquals(current, item))
-        {
-            current.Size = item.Size;
-            current.UpdatedTime = item.UpdatedTime;
-        }
-
-        try
-        {
-            DataStore.SaveEncryptedFiles(files, _password);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"文件内容已加密保存，但文件列表信息保存失败：{ex.Message}",
-                "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    // ---------- 思维导图（通用模块独立功能） ----------
-
-    private void ShowMindMapTab()
-    {
-        SaveNoteNow();
-        HideAllViews();
-        ViewMindMapTab.Visibility = Visibility.Visible;
-
-        try
-        {
-            _mindMaps = DataStore.LoadMindMaps(_password);
-        }
-        catch (InvalidOperationException ex)
-        {
-            MessageBox.Show(ex.Message, "数据错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            _mindMaps = new List<MindMap>();
-        }
-        RefreshMindMapList(_currentMindMapId);
-    }
-
-    private void RefreshMindMapList(string? keepId = null)
-    {
-        LstMindMaps.ItemsSource = null;
-        LstMindMaps.ItemsSource = _mindMaps;
-        TxtMindPopEmpty.Visibility = _mindMaps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        MindEmptyPanel.Visibility = _mindMaps.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        MindMap? keep = keepId == null ? null : _mindMaps.FirstOrDefault(x => x.Id == keepId);
-        if (keep == null && _mindMaps.Count > 0) keep = _mindMaps[0];
-        if (keep == null)
-        {
-            _currentMindMapId = null;
-            TxtMindMapTitle.Text = "思维导图";
-            MindCanvasBorder.Visibility = Visibility.Collapsed;
-            MindView.SetMap(null);
-            return;
-        }
-
-        _currentMindMapId = keep.Id;
-        LstMindMaps.SelectedItem = keep;
-    }
-
-    private void LstMindMaps_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (LstMindMaps.SelectedItem is not MindMap map) return;
-        _currentMindMapId = map.Id;
-        TxtMindMapTitle.Text = map.Name;
-
-        // 打开下拉时刷新列表会重设选中项：同一张图不重复 SetMap（否则每次弹下拉都会重置缩放）
-        if (ReferenceEquals(MindView.Map, map))
-        {
-            MindPop.IsOpen = false;
-            return;
-        }
-
-        MindEmptyPanel.Visibility = Visibility.Collapsed;
-        MindCanvasBorder.Visibility = Visibility.Visible;
-        MindView.SetMap(map);
-        MindPop.IsOpen = false;
-    }
-
-    // 节点文字/结构变化：更新导图时间并整体加密保存
-    private void OnMindMapChanged()
-    {
-        var map = _mindMaps.FirstOrDefault(x => x.Id == _currentMindMapId);
-        if (map == null) return;
-        map.UpdatedTime = DateTime.Now;
-        try
-        {
-            DataStore.SaveMindMaps(_mindMaps, _password);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"保存失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    // 顶部导图名按钮：空列表直接新建，否则弹下拉（切换/新建/重命名/删除）
-    private void BtnMindMapSwitch_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (_mindMaps.Count == 0)
-        {
-            AddMindMap();
-            return;
-        }
-        if (MindPop.IsOpen) return;
-        RefreshMindMapList(_currentMindMapId);
-        MindPop.IsOpen = true;
-    }
-
-    private void BtnAddMindMap_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        AddMindMap();
-    }
-
-    private void AddMindMap()
-    {
-        var dlg = new NameInputDialog("新建思维导图", "导图名称 *", string.Empty, _monitor) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
-
-        if (_mindMaps.Any(x => x.Name == dlg.Value))
-        {
-            MessageBox.Show("该导图名称已存在。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var map = new MindMap
-        {
-            Name = dlg.Value,
-            Root = new MindNode { Title = "中心主题" }
-        };
-        _mindMaps.Add(map);
-        try
-        {
-            DataStore.SaveMindMaps(_mindMaps, _password);
-        }
-        catch (Exception ex)
-        {
-            _mindMaps.Remove(map);
-            MessageBox.Show($"保存失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        RefreshMindMapList(map.Id);
-        MindPop.IsOpen = false;
-        MindView.BeginEditRoot();
-    }
-
-    private void MenuRenameMindMap_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (LstMindMaps.SelectedItem is not MindMap map)
-        {
-            MessageBox.Show("请先点选要重命名的导图。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var dlg = new NameInputDialog("重命名导图", "导图名称 *", map.Name, _monitor) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
-        if (dlg.Value == map.Name) return;
-        if (_mindMaps.Any(x => x.Id != map.Id && x.Name == dlg.Value))
-        {
-            MessageBox.Show("该导图名称已存在。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        string oldName = map.Name;
-        map.Name = dlg.Value;
-        map.UpdatedTime = DateTime.Now;
-        try
-        {
-            DataStore.SaveMindMaps(_mindMaps, _password);
-        }
-        catch (Exception ex)
-        {
-            map.Name = oldName;
-            MessageBox.Show($"保存失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        TxtMindMapTitle.Text = map.Name;
-        RefreshMindMapList(map.Id);
-    }
-
-    private void MenuDeleteMindMap_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (LstMindMaps.SelectedItem is not MindMap map)
-        {
-            MessageBox.Show("请先点选要删除的导图。", "校验", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var r = MessageBox.Show($"确定删除导图「{map.Name}」吗？\n其全部节点将被一并删除。",
-            "确认删除", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (r != MessageBoxResult.OK) return;
-
-        int index = _mindMaps.IndexOf(map);
-        _mindMaps.Remove(map);
-        try
-        {
-            DataStore.SaveMindMaps(_mindMaps, _password);
-        }
-        catch (Exception ex)
-        {
-            _mindMaps.Insert(Math.Min(index, _mindMaps.Count), map);
-            MessageBox.Show($"删除失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-
-        _currentMindMapId = null;
-        RefreshMindMapList();
-    }
-
-    private void BtnMindZoomIn_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        MindView.ZoomIn();
-    }
-
-    private void BtnMindZoomOut_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        MindView.ZoomOut();
-    }
-
-    private void BtnMindFit_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        MindView.Fit();
-    }
-
-    // 操作教程：单独按钮唤起说明弹窗
-    private void BtnMindMapHelp_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        new MindMapHelpDialog(_monitor) { Owner = this }.ShowDialog();
-        _monitor.NotifyActivity();
-    }
-
-    // 导出：按按钮弹出菜单选择图片（PNG）或 YAML（适合给 AI）
-    private void BtnMindExport_Click(object sender, RoutedEventArgs e)
-    {
-        _monitor.NotifyActivity();
-        if (_currentMindMap() == null || MindView.Map == null)
-        {
-            MessageBox.Show("请先选择或新建一张思维导图。", "导出",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var menu = new ContextMenu();
-        var png = new MenuItem { Header = "导出为图片（PNG）" };
-        png.Click += (_, _) => ExportMindMapPng();
-        menu.Items.Add(png);
-        var yaml = new MenuItem { Header = "导出为 YAML（适合给 AI）" };
-        yaml.Click += (_, _) => ExportMindMapYaml();
-        menu.Items.Add(yaml);
-
-        menu.PlacementTarget = sender as UIElement;
-        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
-        menu.IsOpen = true;
-    }
-
-    private MindMap? _currentMindMap()
-        => _mindMaps.FirstOrDefault(x => x.Id == _currentMindMapId);
-
-    // 图片导出：整张导图渲染成 PNG（白底、2 倍分辨率，不含选中高亮）
-    private void ExportMindMapPng()
-    {
-        var map = _currentMindMap();
-        if (map == null) return;
-
-        var fileDlg = new SaveFileDialog
-        {
-            Title = "导出为图片",
-            Filter = "PNG 图片|*.png",
-            FileName = SafeFileName(map.Name) + ".png"
-        };
-        if (fileDlg.ShowDialog(this) != true) return;
-
-        try
-        {
-            MindView.ExportPng(fileDlg.FileName);
-            MessageBox.Show($"导出成功：\n{fileDlg.FileName}", "导出",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"导出失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    // YAML 导出：树形结构（title / content / children），方便直接给 AI 提需求
-    private void ExportMindMapYaml()
-    {
-        var map = _currentMindMap();
-        if (map == null) return;
-
-        var fileDlg = new SaveFileDialog
-        {
-            Title = "导出为 YAML",
-            Filter = "YAML 文件|*.yaml;*.yml",
-            FileName = SafeFileName(map.Name) + ".yaml"
-        };
-        if (fileDlg.ShowDialog(this) != true) return;
-
-        try
-        {
-            int count = MindMapOutlineExporter.ExportYaml(fileDlg.FileName, map);
-            MessageBox.Show($"导出成功，共 {count} 个节点：\n{fileDlg.FileName}", "导出",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"导出失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private static string SafeFileName(string name)
-    {
-        string result = (name ?? string.Empty).Trim();
-        foreach (char c in Path.GetInvalidFileNameChars())
-            result = result.Replace(c, '_');
-        return result.Length == 0 ? "思维导图" : result;
-    }
 }

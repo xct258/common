@@ -26,6 +26,8 @@ public static class DataStore
     public const string EncryptedFilesFileName = "files.dat";
     public const string EncryptedFilesFolderName = "files";
     public const string EncryptedFileExtension = ".enc";
+    public const string MindGroupsFileName = "mindgroups.dat";
+    public const string FileGroupsFileName = "filegroups.dat";
 
     /// <summary>数据文件夹名（exe 同级目录下）。</summary>
     public const string DataFolderName = "Data";
@@ -38,6 +40,9 @@ public static class DataStore
     /// <summary>工作量统计固定项：不存项目字典，排在最后，不可改名删除。</summary>
     public const string FixedMachineProject = "通用";
 
+    /// <summary>思维导图 / 加密文件独立分组的默认分组名（分组与项目列表无关）。</summary>
+    public const string DefaultGroup = "默认";
+
     public static string AppDir => AppDomain.CurrentDomain.BaseDirectory;
     public static string DataDir => Path.Combine(AppDir, DataFolderName);
     public static string ProjectsPath => Path.Combine(DataDir, ProjectsFileName);
@@ -49,6 +54,8 @@ public static class DataStore
     public static string NotesPath => Path.Combine(DataDir, NotesFileName);
     public static string EncryptedFilesPath => Path.Combine(DataDir, EncryptedFilesFileName);
     public static string EncryptedFilesDir => Path.Combine(DataDir, EncryptedFilesFolderName);
+    public static string MindGroupsPath => Path.Combine(DataDir, MindGroupsFileName);
+    public static string FileGroupsPath => Path.Combine(DataDir, FileGroupsFileName);
     public static string EncryptedFilePath(string id) => Path.Combine(EncryptedFilesDir, id + EncryptedFileExtension);
     public static string ImagesDir => Path.Combine(DataDir, ImagesFolderName);
     public static string ImagePath(string id) => Path.Combine(ImagesDir, id + ImageFileExtension);
@@ -108,7 +115,7 @@ public static class DataStore
     // ---- 项目字典 List<string> ----
     public static List<string> LoadProjects(string password)
     {
-        return Load<string>(ProjectsPath, password, "密码错误或项目配置文件损坏。", "项目配置文件损坏。");
+        return Load<string>(ProjectsPath, password, "密码不匹配，无法查看数据。", "项目配置文件损坏。");
     }
 
     public static void SaveProjects(List<string> projects, string password)
@@ -168,7 +175,7 @@ public static class DataStore
     // ---- 工序（含逐条操作流程） List<ProcessItem>，加密存 processes.dat；配图另存 images/*.img ----
     public static List<ProcessItem> LoadProcesses(string password)
     {
-        var list = Load<ProcessItem>(ProcessesPath, password, "密码错误或工序数据文件损坏。", "工序数据文件损坏。");
+        var list = Load<ProcessItem>(ProcessesPath, password, "密码不匹配，无法查看数据。", "工序数据文件损坏。");
         foreach (var p in list)
         {
             if (p.Steps == null) p.Steps = new List<FlowStep>();
@@ -216,7 +223,7 @@ public static class DataStore
     // ---- 工作量记录 List<WorkloadRecord>，加密存 workload.dat ----
     public static List<WorkloadRecord> LoadWorkload(string password)
     {
-        return Load<WorkloadRecord>(WorkloadPath, password, "密码错误或工作量数据文件损坏。", "工作量数据文件损坏。");
+        return Load<WorkloadRecord>(WorkloadPath, password, "密码不匹配，无法查看数据。", "工作量数据文件损坏。");
     }
 
     public static void SaveWorkload(List<WorkloadRecord> items, string password)
@@ -227,7 +234,7 @@ public static class DataStore
     // ---- 工作量工序 List<WorkloadProcess>，加密存 wprocesses.dat ----
     public static List<WorkloadProcess> LoadWorkloadProcesses(string password)
     {
-        return Load<WorkloadProcess>(WorkloadProcessPath, password, "密码错误或工作量工序文件损坏。", "工作量工序文件损坏。");
+        return Load<WorkloadProcess>(WorkloadProcessPath, password, "密码不匹配，无法查看数据。", "工作量工序文件损坏。");
     }
 
     public static void SaveWorkloadProcesses(List<WorkloadProcess> items, string password)
@@ -238,7 +245,7 @@ public static class DataStore
     // ---- 快捷路径 List<PathShortcut>，加密存 shortcuts.dat ----
     public static List<PathShortcut> LoadShortcuts(string password)
     {
-        return Load<PathShortcut>(ShortcutsPath, password, "密码错误或快捷路径文件损坏。", "快捷路径文件损坏。");
+        return Load<PathShortcut>(ShortcutsPath, password, "密码不匹配，无法查看数据。", "快捷路径文件损坏。");
     }
 
     public static void SaveShortcuts(List<PathShortcut> items, string password)
@@ -250,10 +257,11 @@ public static class DataStore
 
     public static List<MindMap> LoadMindMaps(string password)
     {
-        var list = Load<MindMap>(MindMapsPath, password, "密码错误或思维导图数据文件损坏。", "思维导图数据文件损坏。");
+        var list = Load<MindMap>(MindMapsPath, password, "密码不匹配，无法查看数据。", "思维导图数据文件损坏。");
         foreach (var map in list)
         {
             map.Root ??= new MindNode();
+            if (string.IsNullOrWhiteSpace(map.ProjectName)) map.ProjectName = DefaultGroup;
             NormalizeMindNode(map.Root);
         }
         return list;
@@ -283,7 +291,7 @@ public static class DataStore
 
     public static List<NoteItem> LoadNotes(string password)
     {
-        var list = Load<NoteItem>(NotesPath, password, "密码错误或笔记数据文件损坏。", "笔记数据文件损坏。");
+        var list = Load<NoteItem>(NotesPath, password, "密码不匹配，无法查看数据。", "笔记数据文件损坏。");
         foreach (var note in list)
         {
             if (string.IsNullOrEmpty(note.Id)) note.Id = Guid.NewGuid().ToString();
@@ -302,10 +310,11 @@ public static class DataStore
 
     public static List<EncryptedFile> LoadEncryptedFiles(string password)
     {
-        var list = Load<EncryptedFile>(EncryptedFilesPath, password, "密码错误或加密文件数据损坏。", "加密文件数据损坏。");
+        var list = Load<EncryptedFile>(EncryptedFilesPath, password, "密码不匹配，无法查看数据。", "加密文件数据损坏。");
         foreach (var item in list)
         {
             if (string.IsNullOrEmpty(item.Id)) item.Id = Guid.NewGuid().ToString();
+            if (string.IsNullOrWhiteSpace(item.ProjectName)) item.ProjectName = DefaultGroup;
             item.Name ??= string.Empty;
             item.OriginalName ??= string.Empty;
             if (item.Size < 0) item.Size = 0;
@@ -344,6 +353,42 @@ public static class DataStore
         {
             // 单个文件删不掉不影响主流程
         }
+    }
+
+    // ---- 独立分组 List<string>（思维导图 / 加密文件各一套，与项目列表无关） ----
+
+    private static List<string> LoadGroups(string path, string password, string corruptMsg)
+    {
+        var list = Load<string>(path, password, "密码不匹配，无法查看数据。", corruptMsg)
+            .Select(g => (g ?? string.Empty).Trim())
+            .Where(g => g.Length > 0)
+            .Distinct()
+            .ToList();
+        if (list.Count == 0) list.Add(DefaultGroup);
+        return list;
+    }
+
+    public static List<string> LoadMindGroups(string password)
+        => LoadGroups(MindGroupsPath, password, "思维导图分组配置损坏。");
+
+    public static void SaveMindGroups(List<string> groups, string password)
+        => Save(NormalizeGroups(groups), MindGroupsPath, password);
+
+    public static List<string> LoadFileGroups(string password)
+        => LoadGroups(FileGroupsPath, password, "加密文件分组配置损坏。");
+
+    public static void SaveFileGroups(List<string> groups, string password)
+        => Save(NormalizeGroups(groups), FileGroupsPath, password);
+
+    private static List<string> NormalizeGroups(List<string>? groups)
+    {
+        var list = (groups ?? new List<string>())
+            .Select(g => (g ?? string.Empty).Trim())
+            .Where(g => g.Length > 0)
+            .Distinct()
+            .ToList();
+        if (list.Count == 0) list.Add(DefaultGroup);
+        return list;
     }
 
 }

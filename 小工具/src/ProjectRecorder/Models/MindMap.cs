@@ -30,6 +30,8 @@ public class MindMap
 {
     [DataMember] public string Id { get; set; } = Guid.NewGuid().ToString();
     [DataMember] public string Name { get; set; } = string.Empty;
+    /// <summary>所属项目分组（空视为「通用」）。</summary>
+    [DataMember] public string ProjectName { get; set; } = string.Empty;
     [DataMember] public MindNode Root { get; set; } = new MindNode();
     [DataMember] public DateTime CreatedTime { get; set; } = DateTime.Now;
     [DataMember] public DateTime UpdatedTime { get; set; } = DateTime.Now;

@@ -9,21 +9,23 @@
         <conv:StepImageToThumbConverter x:Key="StepImageThumb"/>
         <conv:NotEmptyToVisibilityConverter x:Key="ImagesToVisibility"/>
 
-        <!-- 通用主页：功能卡片入口按钮 -->
+        <!-- 通用主页：功能卡片入口按钮（与工作量工序卡片同尺寸/靠左自适应排列） -->
         <Style x:Key="GeneralCard" TargetType="Button">
-            <Setter Property="Width" Value="228"/>
-            <Setter Property="Height" Value="118"/>
-            <Setter Property="Margin" Value="0,0,16,16"/>
+            <Setter Property="Width" Value="160"/>
+            <Setter Property="Height" Value="200"/>
+            <Setter Property="Margin" Value="0,8"/>
+            <Setter Property="Padding" Value="12,10"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd" Background="White" BorderBrush="#E5E7EB"
-                                BorderThickness="1" CornerRadius="10" Padding="16,14">
-                            <ContentPresenter/>
+                                BorderThickness="1" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -141,38 +143,45 @@
                         <!-- 通用主页：功能卡片入口（点进去是各功能独立整页） -->
                         <Grid x:Name="ViewGeneralHome" Grid.Row="1" Visibility="Collapsed">
                             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="28,22">
-                                <WrapPanel Margin="0,0,0,0">
+                                <panels:AdaptiveWrapPanel Margin="12,8">
                                     <Button Style="{StaticResource GeneralCard}" Click="GTabExport_Click">
-                                        <StackPanel>
-                                            <TextBlock Text="导出工作量" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="导出工作量" FontSize="16" FontWeight="Bold"
+                                                       Foreground="#111827" HorizontalAlignment="Center"
+                                                       TextAlignment="Center" TextWrapping="Wrap"/>
                                             <TextBlock Text="按日期导出 Excel 工作量合计" FontSize="12" Foreground="#6B7280"
-                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                                       TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Button>
                                     <Button Style="{StaticResource GeneralCard}" Click="GTabMindMap_Click">
-                                        <StackPanel>
-                                            <TextBlock Text="思维导图" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="思维导图" FontSize="16" FontWeight="Bold"
+                                                       Foreground="#111827" HorizontalAlignment="Center"
+                                                       TextAlignment="Center" TextWrapping="Wrap"/>
                                             <TextBlock Text="梳理思路，可导出图片 / YAML" FontSize="12" Foreground="#6B7280"
-                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                                       TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Button>
                                     <Button Style="{StaticResource GeneralCard}" Click="GTabNote_Click">
-                                        <StackPanel>
-                                            <TextBlock Text="笔记" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="笔记" FontSize="16" FontWeight="Bold"
+                                                       Foreground="#111827" HorizontalAlignment="Center"
+                                                       TextAlignment="Center" TextWrapping="Wrap"/>
                                             <TextBlock Text="随手记录，自动加密保存" FontSize="12" Foreground="#6B7280"
-                                                       TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                                       TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Button>
                                     <Button Style="{StaticResource GeneralCard}" Click="GTabFiles_Click">
-                                        <StackPanel>
-                                            <TextBlock Text="加密文件" FontSize="16" FontWeight="Bold" Foreground="#1F2937"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="加密文件" FontSize="16" FontWeight="Bold"
+                                                       Foreground="#111827" HorizontalAlignment="Center"
+                                                       TextAlignment="Center" TextWrapping="Wrap"/>
                                             <TextBlock Text="导入即 AES-256 加密；md / sh / py 可在线编辑" FontSize="12"
-                                                       Foreground="#6B7280" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                                       Foreground="#6B7280" TextWrapping="Wrap" TextAlignment="Center"
+                                                       Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Button>
-                                </WrapPanel>
-                            </StackPanel>
+                                </panels:AdaptiveWrapPanel>
                             </ScrollViewer>
                         </Grid>
 
@@ -294,8 +303,19 @@
                             </Grid.RowDefinitions>
 
                             <Grid Grid.Row="0" Margin="14,10">
-                                <TextBlock x:Name="TxtWorkShift" FontSize="14" Foreground="#374151"
-                                           VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"
+                                            VerticalAlignment="Center">
+                                    <Button x:Name="BtnWorkShift" Style="{StaticResource BtnGhost}"
+                                            FontWeight="Bold"
+                                            ToolTip="点击选择日期与班次（补录当前班次之前的工作量）"
+                                            Click="BtnWorkShift_Click"/>
+                                    <TextBlock x:Name="TxtWorkBackfill" Text="补录中" FontSize="11"
+                                               Foreground="#D97706" VerticalAlignment="Center"
+                                               Margin="8,0,0,0" Visibility="Collapsed"/>
+                                    <Button x:Name="BtnWorkNow" Content="回到现在" Height="30" Margin="8,0,0,0"
+                                            Style="{StaticResource BtnGhost}" Click="BtnWorkNow_Click"
+                                            ToolTip="快速回到当前班次" Visibility="Collapsed"/>
+                                </StackPanel>
                                 <Button x:Name="BtnAddWProcess" Content="＋ 添加工序" HorizontalAlignment="Right"
                                         Style="{StaticResource BtnPrimary}" Click="BtnAddWProcess_Click"/>
                             </Grid>
@@ -318,6 +338,8 @@
                                     </ListBox.ItemsPanel>
                                     <ListBox.ContextMenu>
                                         <ContextMenu>
+                                            <MenuItem Header="查看执行明细" Click="MenuWProcessDetail_Click"/>
+                                            <Separator/>
                                             <MenuItem Header="上移" Click="MenuWProcessUp_Click"/>
                                             <MenuItem Header="下移" Click="MenuWProcessDown_Click"/>
                                             <MenuItem Header="删除该工序" Click="MenuDeleteWProcess_Click"/>
@@ -334,11 +356,11 @@
                                                                 TextWrapping="Wrap" MaxHeight="46" TextTrimming="CharacterEllipsis"/>
                                                      <TextBlock FontSize="13" Foreground="#6B7280" Margin="0,4,0,0"
                                                                 HorizontalAlignment="Center">
-                                                         <Run Text="本班："/><Run Text="{Binding ShiftQty}"/>
+                                                         <Run Text="已完成："/><Run Text="{Binding ShiftQty}"/>
                                                      </TextBlock>
                                                      <TextBlock FontSize="11" Foreground="#9CA3AF" Margin="0,2,0,0"
                                                                 HorizontalAlignment="Center">
-                                                         <Run Text="最后："/><Run Text="{Binding LastTimeText}"/>
+                                                         <Run Text="最后完成时间："/><Run Text="{Binding LastTimeText}"/>
                                                      </TextBlock>
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                                                                 Margin="0,10,0,0">
@@ -507,117 +529,6 @@
                             </Grid>
                         </Grid>
 
-                        <!-- 通用入口：思维导图（全宽画布，顶部下拉切换导图） -->
-                        <Grid x:Name="ViewMindMapTab" Grid.Row="1" Visibility="Collapsed">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <Grid Grid.Row="0" Margin="14,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button x:Name="BtnMindMapSwitch" Height="30" MinWidth="110"
-                                            Style="{StaticResource BtnGhost}" Click="BtnMindMapSwitch_Click"
-                                            ToolTip="切换 / 新建 / 重命名 / 删除思维导图">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock x:Name="TxtMindMapTitle" Text="思维导图" FontWeight="Bold"
-                                                       TextTrimming="CharacterEllipsis" MaxWidth="180"/>
-                                            <TextBlock Text=" ▾" Foreground="#6B7280"/>
-                                        </StackPanel>
-                                    </Button>
-                                    <Button x:Name="BtnMindMapHelp" Content="操作教程" Height="30" Margin="8,0,0,0"
-                                            Style="{StaticResource BtnGhost}" Click="BtnMindMapHelp_Click"
-                                            ToolTip="查看思维导图操作教程"/>
-                                    <Popup x:Name="MindPop" PlacementTarget="{Binding ElementName=BtnMindMapSwitch}"
-                                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
-                                           PopupAnimation="Fade">
-                                    <Border Background="White" BorderBrush="#D1D5DB" BorderThickness="1"
-                                            CornerRadius="8" Padding="8" Margin="0,4,4,0" MinWidth="250">
-                                        <Border.Effect>
-                                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.15"/>
-                                        </Border.Effect>
-                                        <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="*"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBlock x:Name="TxtMindPopEmpty" Grid.Row="0"
-                                                       Text="还没有导图，点右下角“＋ 新建”" FontSize="12"
-                                                       Foreground="#9CA3AF" Margin="4,6" Visibility="Collapsed"/>
-                                            <ListBox x:Name="LstMindMaps" Grid.Row="0" MaxHeight="260"
-                                                     SelectionMode="Single" Style="{StaticResource CleanList}"
-                                                     SelectionChanged="LstMindMaps_SelectionChanged"
-                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                                <ListBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Margin="0,2" Padding="10,8"
-                                                                Style="{StaticResource CardBorder}">
-                                                            <StackPanel>
-                                                                <TextBlock Text="{Binding Name}" FontSize="14"
-                                                                           FontWeight="Bold" Foreground="#1F2937"
-                                                                           TextTrimming="CharacterEllipsis"/>
-                                                                <TextBlock FontSize="11" Foreground="#6B7280"
-                                                                           Margin="0,2,0,0">
-                                                                    <Run Text="{Binding NodeCount, Mode=OneWay}"/><Run Text=" 个节点 · "/><Run Text="{Binding UpdatedTime, Mode=OneWay, StringFormat=MM-dd HH:mm}"/>
-                                                                </TextBlock>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ListBox.ItemTemplate>
-                                            </ListBox>
-                                            <StackPanel Grid.Row="1" Orientation="Horizontal"
-                                                        HorizontalAlignment="Right" Margin="0,8,0,0">
-                                                <Button Content="＋ 新建" Height="28"
-                                                        Style="{StaticResource BtnPrimary}"
-                                                        Click="BtnAddMindMap_Click"/>
-                                                <Button Content="重命名" Height="28" Margin="8,0,0,0"
-                                                        Style="{StaticResource BtnGhost}"
-                                                        Click="MenuRenameMindMap_Click"/>
-                                                <Button Content="删除" Height="28" Margin="8,0,0,0"
-                                                        Style="{StaticResource BtnGhost}"
-                                                        Click="MenuDeleteMindMap_Click"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </Popup>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button x:Name="BtnMindExport" Content="导 出 ▾" Height="30"
-                                            Style="{StaticResource BtnPrimary}" Click="BtnMindExport_Click"
-                                            ToolTip="导出图片（PNG）或 YAML（适合给 AI）"/>
-                                    <Button x:Name="BtnMindZoomOut" Content="－" Width="30" Height="30"
-                                            Margin="8,0,0,0" Style="{StaticResource BtnStep}"
-                                            Click="BtnMindZoomOut_Click"/>
-                                    <TextBlock x:Name="TxtMindZoom" Text="100%" Width="46" FontSize="12"
-                                               Foreground="#6B7280" TextAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                    <Button x:Name="BtnMindZoomIn" Content="＋" Width="30" Height="30"
-                                            Style="{StaticResource BtnStep}" Click="BtnMindZoomIn_Click"/>
-                                    <Button x:Name="BtnMindFit" Content="适应窗口" Height="30" Margin="8,0,0,0"
-                                            Style="{StaticResource BtnGhost}" Click="BtnMindFit_Click"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Grid Grid.Row="1" Margin="12,0,12,12">
-                                <Border x:Name="MindCanvasBorder" Visibility="Collapsed"
-                                        BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="10"
-                                        ClipToBounds="True">
-                                    <panels:MindMapView x:Name="MindView"/>
-                                </Border>
-                                <StackPanel x:Name="MindEmptyPanel" HorizontalAlignment="Center"
-                                            VerticalAlignment="Center">
-                                    <TextBlock Text="还没有思维导图" Style="{StaticResource EmptyText}"/>
-                                    <Button Content="＋ 新建思维导图" Width="160" Height="36" Margin="0,14,0,0"
-                                            Style="{StaticResource BtnPrimary}" Click="BtnAddMindMap_Click"/>
-                                </StackPanel>
-                            </Grid>
-                        </Grid>
-
                         <!-- 通用入口：笔记（左列笔记列表，右侧标题 + 正文编辑，自动保存） -->
                         <Grid x:Name="ViewNoteTab" Grid.Row="1" Visibility="Collapsed">
                             <Grid.ColumnDefinitions>
@@ -704,68 +615,6 @@
                             </Border>
                         </Grid>
 
-                        <!-- 通用入口：加密文件（导入即加密存储，导出为解密副本） -->
-                        <Grid x:Name="ViewFileTab" Grid.Row="1" Visibility="Collapsed">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <Grid Grid.Row="0" Margin="14,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TxtFileVaultInfo"
-                                               Text="加密文件：导入后 AES-256 加密存本地，绝不明文落盘；导出的是解密副本，请妥善保管"
-                                               FontSize="12" Foreground="#6B7280"
-                                               TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
-                                </StackPanel>
-                                <Button x:Name="BtnImportFile" Grid.Column="1" Content="＋ 导入文件"
-                                        Style="{StaticResource BtnPrimary}" Click="BtnImportFile_Click"
-                                        ToolTip="可多选；单文件上限 200MB"/>
-                            </Grid>
-                            <Grid Grid.Row="1" Margin="12,0,12,12">
-                                <TextBlock x:Name="TxtFileEmpty"
-                                           Text="暂无加密文件，点右上角“＋ 导入文件”（支持多选、任意类型）"
-                                           Style="{StaticResource EmptyText}" TextWrapping="Wrap"
-                                           Margin="20" Visibility="Collapsed"/>
-                                <ListBox x:Name="LstEncryptedFiles" SelectionMode="Single"
-                                         Style="{StaticResource CleanList}"
-                                         PreviewMouseRightButtonDown="LstEncryptedFiles_RightButtonDown"
-                                         PreviewMouseRightButtonUp="ListBlankUp"
-                                         MouseDoubleClick="LstEncryptedFiles_MouseDoubleClick"
-                                         ScrollViewer.CanContentScroll="False"
-                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                                    <ListBox.ContextMenu>
-                                        <ContextMenu Opened="EncryptedFilesMenu_Opened">
-                                            <MenuItem x:Name="MenuEditEncryptedFile" Header="编辑"
-                                                      Click="MenuEditEncryptedFile_Click"
-                                                      ToolTip="支持 .md / .sh / .py；双击文件也可打开"/>
-                                            <Separator/>
-                                            <MenuItem Header="导出解密副本" Click="MenuExportEncryptedFile_Click"/>
-                                            <MenuItem Header="重命名" Click="MenuRenameEncryptedFile_Click"/>
-                                            <MenuItem Header="删除" Click="MenuDeleteEncryptedFile_Click"/>
-                                        </ContextMenu>
-                                    </ListBox.ContextMenu>
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Margin="0,3" Padding="10,8" Style="{StaticResource CardBorder}"
-                                                    ToolTip="双击或右键：编辑（.md / .sh / .py）；支持导出解密副本 / 重命名 / 删除">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding DisplayName}" FontSize="14"
-                                                               FontWeight="Bold" Foreground="#1F2937"
-                                                               TextTrimming="CharacterEllipsis"/>
-                                                     <TextBlock FontSize="11" Foreground="#6B7280" Margin="0,2,0,0">
-                                                         <Run Text="{Binding SizeText, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding DisplayTime, Mode=OneWay, StringFormat=yyyy-MM-dd HH:mm}"/><Run Text=" "/><Run Text="{Binding DisplayTimeLabel, Mode=OneWay}"/>
-                                                     </TextBlock>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Grid>
-                        </Grid>
                     </Grid>
                 </Grid>
             </Border>
