@@ -12,6 +12,8 @@ public class WorkloadRecord
 {
     public const string DayShift = "白班";
     public const string NightShift = "夜班";
+    /// <summary>「其它」卡片录入的记录统一使用该工序名。</summary>
+    public const string OtherProcessName = "其它";
 
     [DataMember] public string Id { get; set; } = Guid.NewGuid().ToString();
     [DataMember] public string ProjectName { get; set; } = string.Empty;
@@ -22,6 +24,8 @@ public class WorkloadRecord
     [DataMember] public string Notes { get; set; } = string.Empty;
     /// <summary>是否补录（补录只选日期+班次，无具体执行时间；导出明细“执行时间”列显示“补录”）。</summary>
     [DataMember] public bool IsBackfill { get; set; }
+    /// <summary>是否由「其它」卡片录入（项目自由填写，工序固定为“其它”）。</summary>
+    [DataMember] public bool IsOther { get; set; }
     [DataMember] public DateTime CreatedTime { get; set; } = DateTime.Now;
 
     public static string GetShiftName(DateTime time)

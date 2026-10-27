@@ -1,18 +1,15 @@
 using System.Windows;
-using System.Windows.Media;
 using ProjectRecorder.Services;
 
 namespace ProjectRecorder;
 
 /// <summary>
-/// 手动复制弹窗：展示文本（默认全选），可手动 Ctrl+C；也提供“复 制”按钮再试一次。
-/// 剪贴板被其它程序占用时这是最可靠的兜底。弹窗内操作同样上报无操作计时。
+/// 手动复制窗口：展示网址并默认全选，由用户按 Ctrl+C 复制。
+/// 程序不提供自动复制，也不会自动写入剪贴板。
+/// 弹窗内操作同样上报无操作计时。
 /// </summary>
 public partial class ManualCopyDialog : Window
 {
-    private static readonly Brush OkBrush = new SolidColorBrush(Color.FromRgb(0x15, 0x80, 0x3D));
-    private static readonly Brush FailBrush = new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26));
-
     private readonly InactivityMonitor? _monitor;
 
     public ManualCopyDialog(string text, InactivityMonitor? monitor = null)
@@ -40,25 +37,10 @@ public partial class ManualCopyDialog : Window
         PreviewTextInput += (s, e) => _monitor.NotifyActivity();
     }
 
-    // 获得焦点自动全选，方便连续多次手动复制
+    // 获得焦点自动全选，方便直接 Ctrl+C
     private void TxtContent_GotFocus(object sender, RoutedEventArgs e)
     {
         TxtContent.Dispatcher.BeginInvoke(new System.Action(TxtContent.SelectAll));
-    }
-
-    private void BtnCopy_Click(object sender, RoutedEventArgs e)
-    {
-        if (MainWindow.CopyToClipboard(TxtContent.Text))
-        {
-            TxtStatus.Foreground = OkBrush;
-            TxtStatus.Text = "已复制到剪贴板。";
-            return;
-        }
-
-        TxtStatus.Foreground = FailBrush;
-        TxtStatus.Text = "复制失败，请手动选中后按 Ctrl+C。";
-        TxtContent.Focus();
-        TxtContent.SelectAll();
     }
 
     private void BtnClose_Click(object sender, RoutedEventArgs e)

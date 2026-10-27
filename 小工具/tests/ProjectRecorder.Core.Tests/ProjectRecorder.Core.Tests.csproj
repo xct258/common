@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!--
+    直接链接主项目的纯逻辑源码：业务项目是 net48 + WPF，无法被 net8 测试项目引用；
+    这几个文件不依赖 WPF / 文件系统，链接编译后即可在任意平台 dotnet test。
+  -->
+  <ItemGroup>
+    <Compile Include="../../src/ProjectRecorder/Models/WorkloadRecord.cs" Link="Models/WorkloadRecord.cs" />
+    <Compile Include="../../src/ProjectRecorder/Models/WorkloadProcess.cs" Link="Models/WorkloadProcess.cs" />
+    <Compile Include="../../src/ProjectRecorder/Services/WorkloadService.cs" Link="Services/WorkloadService.cs" />
+    <Compile Include="../../src/ProjectRecorder/Services/ShiftService.cs" Link="Services/ShiftService.cs" />
+    <Compile Include="../../src/ProjectRecorder/Services/WorkloadExportBuilder.cs" Link="Services/WorkloadExportBuilder.cs" />
+    <Compile Include="../../src/ProjectRecorder/Services/ExcelExporter.cs" Link="Services/ExcelExporter.cs" />
+  </ItemGroup>
+
+</Project>
