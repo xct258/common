@@ -5,7 +5,7 @@
 # 如果变量 _LOG_LOADED 已定义且非空，说明脚本已加载过
 # 直接 return 避免重复执行导致变量覆盖或性能浪费
 # ==========================================
-[[ -n "${_LOG_LOADED}" ]] && return
+[[ -n "${_LOG_LOADED:-}" ]] && return
 readonly _LOG_LOADED=1
 # 标记脚本已加载，设为只读防止被意外修改
 
@@ -38,7 +38,7 @@ declare -gA _log_file_map
 # 例：若 web.sh source 本模块后调用 log，返回 "web"
 # ==========================================
 _log_get_caller_base() {
-  local caller="${BASH_SOURCE[2]}"
+  local caller="${BASH_SOURCE[2]:-${BASH_SOURCE[1]:-${BASH_SOURCE[0]:-}}}"
   echo "$(basename "$caller" .sh)"
 }
 
@@ -56,10 +56,10 @@ _log_cleanup_once() {
   local base="$1"
   # base 参数标识哪个应用的日志目录需要清理
 
-  if [[ -z "${_log_cleanup_done_map[$base]}" ]]; then
+  if [[ -z "${_log_cleanup_done_map[$base]:-}" ]]; then
     # 如果该应用尚未执行过清理，则进入清理流程
 
-    local dir="${LOG_BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[3]:-${BASH_SOURCE[2]}}")" && pwd)/logs}/$base"
+    local dir="${LOG_BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[3]:-${BASH_SOURCE[2]:-}}")" && pwd)/logs}/$base"
     # 计算日志目录路径：优先使用 LOG_BASE_DIR 环境变量，否则以调用脚本所在目录的 logs/ 子目录为根
 
     if [[ -d "$dir" ]]; then
@@ -232,6 +232,8 @@ log_usage() {
                          （默认：本机 hostname）
   LOG_MQTT_MODE          推送模式：append（追加）/ overwrite（覆盖）
                          （默认：append）
+  LOG_COLOR              终端颜色：auto（仅终端上色，默认）/
+                         always（强制上色）/ never（永不上色）
 
 【函数说明】
   log <级别> <消息>                      写入日志（文件 + 终端）
@@ -257,6 +259,13 @@ EOF
 log() {
   local force_print=0
   # force_print: 是否强制打印到控制台（无视重定向）
+
+  if [[ $# -eq 0 ]]; then
+    # 无参数时不能直接读 $1（set -u 会报错）
+    echo "用法: log [-f] <级别> <消息>" >&2
+    log_usage
+    return 1
+  fi
 
   if [[ "$1" == "-f" ]]; then
     # 检查第一个参数是否为强制打印标志
@@ -322,10 +331,10 @@ log() {
   #   2. 生成唯一文件名：{tag}_{时分秒}_{进程PID}.log
   # 不同应用（base）使用独立的日志文件，互不影响
   # ==========================================
-  if [[ -z "${_log_file_map[$base]}" ]]; then
+  if [[ -z "${_log_file_map[$base]:-}" ]]; then
     # 当前应用还没有打开的文件，需要创建新的
 
-    local log_dir="${LOG_BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[2]:-${BASH_SOURCE[1]}}")" && pwd)/logs}/$base/$ts_file"
+    local log_dir="${LOG_BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[2]:-${BASH_SOURCE[1]:-}}")" && pwd)/logs}/$base/$ts_file"
     # 完整目录路径：根目录 + 应用名 + 日期层级
 
     mkdir -p "$log_dir"
@@ -356,10 +365,25 @@ log() {
   # 输出条件：是终端（-t 1）或 强制打印（force_print=1）
   # 即使脚本输出被重定向到文件，-f 参数也能确保日志在终端可见
   # ==========================================
+  # 颜色规则（LOG_COLOR）：
+  #   auto   默认，只有输出到终端才上色
+  #   always 强制上色
+  #   never  永不上色（输出到 docker logs / 文件时用）
+  local use_color=0
+  if [[ "${LOG_COLOR:-auto}" == "always" ]]; then
+    use_color=1
+  elif [[ "${LOG_COLOR:-auto}" == "auto" && -t 1 ]]; then
+    use_color=1
+  fi
+
   local colored_log="${color_code}[$ts] [$tag] $symbol $message${color_reset}"
   if [[ -t 1 || "$force_print" -eq 1 ]]; then
-    echo -e "$colored_log"
-    # -e 选项使转义序列 \033[...m 生效
+    if [[ "$use_color" -eq 1 ]]; then
+      echo -e "$colored_log"
+      # -e 选项使转义序列 \033[...m 生效
+    else
+      echo "$plain_log"
+    fi
   fi
 
   # ==========================================
