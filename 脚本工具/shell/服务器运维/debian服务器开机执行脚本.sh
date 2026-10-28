@@ -212,6 +212,182 @@ EOF
   fi
 }
 
+# ============ Oracle Cloud 附加 IP（IPv6 自动 / IPv4 手动） ============
+# IPv6：从 OCI 实例元数据读取该 VNIC 上分配的全部 IPv6，自动附加
+# IPv4：元数据不提供 secondary private IP，由用户输入后自动附加
+# 新增/删除 IPv6 后无需改任何文件，重启本服务即可跟随
+configure_oci_multi_ip() {
+  local ans_v6 ans_v4 ip4 v6_count
+  local -a ip4_list=()
+  local enable_v6=no enable_v4=no
+  local META="http://169.254.169.254/opc/v2"
+
+  # 只有 OCI 实例才有实例元数据服务
+  if ! curl -sf --max-time 3 -H 'Authorization: Bearer Oracle' "$META/instance/" >/dev/null 2>&1; then
+    log "33;1" "未检测到 OCI 实例元数据，跳过多 IP 配置"
+    return 0
+  fi
+
+  # 先看该 VNIC 上到底有没有 IPv6
+  v6_count=$(curl -sf --max-time 3 -H 'Authorization: Bearer Oracle' "$META/vnics/" 2>/dev/null \
+    | tr -d ' \n\r\t' \
+    | grep -o '"ipv6Addresses":\[[^]]*\]' | head -1 \
+    | sed 's/^"ipv6Addresses"://' \
+    | grep -o '"[^"]*"' | wc -l || true)
+
+  if [ "${v6_count:-0}" -gt 0 ]; then
+    while true; do
+      log "33;1" "检测到该网卡有 ${v6_count} 个 IPv6，是否自动附加？[y/n]: "
+      read -r -e ans_v6
+      case "$ans_v6" in
+        y|Y) enable_v6=yes; break ;;
+        n|N) enable_v6=no;  break ;;
+        *) log "31;1" "无效输入，请输入 'y' 或 'n'" ;;
+      esac
+    done
+  else
+    log "33;1" "该网卡未分配 IPv6，跳过 IPv6 配置"
+  fi
+
+  while true; do
+    log "33;1" "是否需要配置附加 IPv4（secondary private IP）？[y/n]: "
+    read -r -e ans_v4
+    case "$ans_v4" in
+      y|Y) enable_v4=yes; break ;;
+      n|N) enable_v4=no;  break ;;
+      *) log "31;1" "无效输入，请输入 'y' 或 'n'" ;;
+    esac
+  done
+
+  if [ "$enable_v4" = "yes" ]; then
+    log "33;1" "请输入附加 IPv4（CIDR 格式，如 10.0.0.41/24），输入 done 结束："
+    while true; do
+      read -r -e ip4
+      [ "$ip4" = "done" ] && break
+      [ -z "$ip4" ] && continue
+      if [[ ! "$ip4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+        log "31;1" "格式错误，请重新输入"
+        continue
+      fi
+      ip4_list+=("$ip4")
+      log "32;1" "已添加：$ip4"
+    done
+  fi
+
+  # 1) 实际配地址的脚本（开机由 systemd 再跑一次）
+  cat > /usr/local/sbin/oci-secondary-ips <<'SCRIPT'
+#!/usr/bin/env bash
+# Configure OCI extra IPs on the primary VNIC.
+#   IPv6: read from instance metadata (every address assigned to the VNIC)
+#   IPv4: secondary private IPs listed in /etc/oci-secondary-ips.conf
+# Idempotent: safe to run at every boot. Needs only bash + iproute2 + curl.
+set -u
+
+CONF=/etc/oci-secondary-ips.conf
+META_URL=http://169.254.169.254/opc/v2/vnics/
+META_HDR='Authorization: Bearer Oracle'
+
+# ---- defaults, overridable by the config file ----
+ENABLE_IPV6=yes
+ENABLE_IPV4=yes
+IPV4_ADDRESSES=()
+
+[ -r "$CONF" ] && . "$CONF"
+
+log() { logger -t oci-secondary-ips -- "$*" 2>/dev/null; echo "oci-secondary-ips: $*"; }
+
+IFACE=${IFACE:-$(ip -o -4 route show default 2>/dev/null | awk '{print $5; exit}')}
+[ -z "${IFACE:-}" ] && IFACE=$(ip -o link show | awk -F': ' '$2!="lo"{print $2; exit}')
+[ -z "${IFACE:-}" ] && { log "no network interface found"; exit 1; }
+
+# ---- IPv6: primary gets /64 (creates the on-link route), rest get /128 ----
+if [ "$ENABLE_IPV6" = "yes" ]; then
+  json=$(curl -sf --max-time 5 -H "$META_HDR" "$META_URL" 2>/dev/null) || json=""
+  flat=$(printf '%s' "$json" | tr -d ' \n\r\t')
+
+  v6addrs=()
+  if [ -n "$flat" ]; then
+    while IFS= read -r a; do
+      [ -n "$a" ] && v6addrs+=("$a")
+    done < <(printf '%s' "$flat" \
+      | grep -o '"ipv6Addresses":\[[^]]*\]' \
+      | head -1 \
+      | sed 's/^"ipv6Addresses"://' \
+      | grep -o '"[^"]*"' \
+      | tr -d '"')
+  fi
+
+  i=0
+  for a in "${v6addrs[@]:-}"; do
+    [ -z "$a" ] && continue
+    if [ "$i" -eq 0 ]; then
+      ip -6 addr replace "$a/64" dev "$IFACE" && log "ipv6 $a/64 on $IFACE"
+    else
+      ip -6 addr replace "$a/128" dev "$IFACE" && log "ipv6 $a/128 on $IFACE"
+    fi
+    i=$((i + 1))
+  done
+
+  v6gw=""
+  [ -n "$flat" ] && v6gw=$(printf '%s' "$flat" \
+    | grep -o '"ipv6VirtualRouterIp":"[^"]*"' \
+    | head -1 | cut -d'"' -f4)
+  if [ -n "${v6gw:-}" ]; then
+    ip -6 route replace default via "$v6gw" dev "$IFACE" 2>/dev/null \
+      && log "ipv6 default via $v6gw"
+  fi
+fi
+
+# ---- IPv4 secondaries ----
+if [ "$ENABLE_IPV4" = "yes" ] && [ "${#IPV4_ADDRESSES[@]}" -gt 0 ]; then
+  for ip4 in "${IPV4_ADDRESSES[@]}"; do
+    [ -n "$ip4" ] || continue
+    ip addr replace "$ip4" dev "$IFACE" && log "ipv4 $ip4 on $IFACE"
+  done
+fi
+
+exit 0
+SCRIPT
+  chmod 0755 /usr/local/sbin/oci-secondary-ips
+
+  # 2) 配置文件
+  {
+    echo "# 由 debian服务器开机执行脚本.sh 生成"
+    echo "ENABLE_IPV6=$enable_v6"
+    echo "ENABLE_IPV4=$enable_v4"
+    if [ "${#ip4_list[@]}" -gt 0 ]; then
+      echo "IPV4_ADDRESSES=("
+      for ip4 in "${ip4_list[@]}"; do printf '  %q\n' "$ip4"; done
+      echo ")"
+    else
+      echo "IPV4_ADDRESSES=()"
+    fi
+  } > /etc/oci-secondary-ips.conf
+
+  # 3) 开机自启服务
+  cat > /etc/systemd/system/oci-secondary-ips.service <<'UNIT'
+[Unit]
+Description=Configure OCI secondary IPv4/IPv6 addresses
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/usr/local/sbin/oci-secondary-ips
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/oci-secondary-ips
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  systemctl daemon-reload
+  systemctl enable --now oci-secondary-ips.service
+  log "32;1" "OCI 附加 IP 已生效，并已设置为开机自动附加"
+}
+
 # ============ 系统基础配置 ============
 log "33;1" ">>> 开始执行 Debian 服务器初始化（日志: $LOG_FILE）"
 if ! apt update; then
@@ -787,5 +963,8 @@ else
     nohup /usr/local/bin/boot-exec.sh >/dev/null 2>&1 &
   fi
 fi
+
+# ============ Oracle Cloud 附加 IP（IPv6 自动 / IPv4 手动） ============
+configure_oci_multi_ip
 
 log "32;1" "执行成功"
