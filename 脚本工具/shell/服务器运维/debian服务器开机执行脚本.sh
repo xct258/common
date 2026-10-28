@@ -50,7 +50,7 @@ trap 'rc=$?; log "" ">>> $(date "+%F %T") 脚本结束，退出码=$rc"' EXIT
 
 # ============ 下载策略：直连 3 次 → 国内加速 → 仍失败退出 ============
 # 国内加速前缀（仅用于 GitHub 域名），可用同名环境变量覆盖，空格分隔
-GITHUB_MIRRORS="${GITHUB_MIRRORS:-https://ghfast.top https://gh-proxy.com https://ghproxy.net}"
+GITHUB_MIRRORS="${GITHUB_MIRRORS:-https://ghfast.top/ https://gh-proxy.com/ https://ghproxy.net/}"
 
 # 单次下载：curl 连接超时 10 秒，wget 总超时 10 秒
 # 除 3 个必选参数外，其余参数按“额外请求头”传给工具（用于私有仓库令牌）
