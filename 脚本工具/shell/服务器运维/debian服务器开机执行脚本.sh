@@ -10,7 +10,7 @@
 #   5. boot-exec.service 与常驻任务均以后台方式启动，避免 oneshot 被备份脚本长期阻塞
 #   6. 简化 rclone 配置加载：目标为公开仓库，去掉 GitHub token 输入环节
 #   7. 7zip 改为从 GitHub 官方仓库（ip7z/7zip）下载：官网 /a/ 直链已 404，
-#      版本号取不到时回退固定版本，下载/解压/可执行性均校验后再替换
+#      版本号经 GitHub API 实时查询，查不到直接退出（不使用固定版本），下载后校验可执行性
 #   8. 增加 root 校验、set -u 安全处理、日志输出、EXIT 陷阱
 #   9. 删除内核文件前校验为符号链接(-L)才删除，更保守
 #  10. locale.gen 写入去重、备份目录去重、server_name/备份目录用 %q 写入可安全 source
@@ -228,13 +228,25 @@ if [ -e "/bin/7zz" ]; then
 else
   # 官网 www.7-zip.org/a/ 直链已 404，改从 GitHub 官方仓库下载：
   # https://github.com/ip7z/7zip/releases
-  SEVENZIP_FALLBACK_VER="26.05"
-  latest_ver_7z=$(curl -fsSL --max-time 15 https://api.github.com/repos/ip7z/7zip/releases/latest 2>/dev/null \
-    | grep -oP '"tag_name"\s*:\s*"\K[^"]+' | head -1 || true)
+  # 版本号必须实时查询，查不到就退出，不使用固定回退版本
+  latest_ver_7z=""
+  for attempt in 1 2 3; do
+    latest_ver_7z=$(curl -fsSL --connect-timeout 10 --max-time 20 \
+      https://api.github.com/repos/ip7z/7zip/releases/latest 2>/dev/null \
+      | grep -oP '"tag_name"\s*:\s*"\K[^"]+' | head -1 || true)
+    if [ -n "$latest_ver_7z" ]; then
+      break
+    fi
+    log "33;1" "获取 7zip 版本号失败（第 $attempt/3 次）"
+    if [ "$attempt" -lt 3 ]; then
+      sleep 3
+    fi
+  done
   if [ -z "$latest_ver_7z" ]; then
-    latest_ver_7z="$SEVENZIP_FALLBACK_VER"
-    log "33;1" "无法获取 7zip 最新版本号（GitHub API 限流或网络异常），回退到 $latest_ver_7z"
+    log "31;1" "错误：无法获取 7zip 最新版本号（GitHub API 不可用），退出脚本"
+    exit 1
   fi
+  log "32;1" "7zip 最新版本：$latest_ver_7z"
   # 标签形如 26.05，资产文件名形如 7z2605-linux-x64.tar.xz
   ver_7z=$(printf '%s' "$latest_ver_7z" | tr -d '.')
   arch=$(uname -m)
