@@ -15,7 +15,8 @@
 #   9. 删除内核文件前校验为符号链接(-L)才删除，更保守
 #  10. locale.gen 写入去重、备份目录去重、server_name/备份目录用 %q 写入可安全 source
 #  11. Docker 安装改为「官方源重试 3 次 → 阿里云镜像 apt 源 → 仍失败则退出脚本」
-#  12. 所有 wget 下载统一走 download_or_exit：10 秒无响应超时、最多 3 次，失败即退出脚本
+#  12. 所有下载统一超时重试：wget 用 download_or_exit、curl 用 curl_download_or_exit，
+#      10 秒无响应超时、最多 3 次，失败即退出脚本；rclone 安装脚本执行失败也退出
 # ================================================================
 
 set -euo pipefail
@@ -58,6 +59,26 @@ download_or_exit() {
       return 0
     fi
     log "33;1" "下载失败（第 $attempt/3 次，超时 10 秒）：$url"
+    if [ "$attempt" -lt 3 ]; then
+      sleep 3
+    fi
+  done
+  rm -f "$tmp"
+  log "31;1" "错误：连续 3 次下载失败，退出脚本：$url"
+  exit 1
+}
+
+# curl 版本下载：连接 10 秒超时，最多尝试 3 次，仍失败则退出脚本
+# 用法: curl_download_or_exit <url> <输出路径>
+curl_download_or_exit() {
+  local url="$1" out="$2" attempt tmp
+  tmp="${out}.part.$$"
+  for attempt in 1 2 3; do
+    if curl -fsSL --connect-timeout 10 --max-time 120 -o "$tmp" "$url"; then
+      mv -f "$tmp" "$out"
+      return 0
+    fi
+    log "33;1" "下载失败（第 $attempt/3 次，连接超时 10 秒）：$url"
     if [ "$attempt" -lt 3 ]; then
       sleep 3
     fi
@@ -228,7 +249,7 @@ install_docker_official() {
   local attempt
   for attempt in 1 2 3; do
     log "33;1" "官方源安装 Docker（第 $attempt/3 次尝试）"
-    if curl -fsSL --connect-timeout 15 --max-time 120 https://get.docker.com -o /tmp/get-docker.sh; then
+    if curl -fsSL --connect-timeout 10 --max-time 120 https://get.docker.com -o /tmp/get-docker.sh; then
       if bash /tmp/get-docker.sh; then
         rm -f /tmp/get-docker.sh
         log "32;1" "官方源安装 Docker 成功"
@@ -255,7 +276,7 @@ install_docker_aliyun() {
   apt-get update || return 1
   apt-get install -y ca-certificates curl gnupg || return 1
   install -m 0755 -d /etc/apt/keyrings || return 1
-  if ! curl -fsSL --connect-timeout 15 --max-time 60 \
+  if ! curl -fsSL --connect-timeout 10 --max-time 60 \
       "https://mirrors.aliyun.com/docker-ce/linux/${distro}/gpg" -o "$key"; then
     return 1
   fi
@@ -343,12 +364,18 @@ else
     read -r -e install_rclone
     case "$install_rclone" in
       y|Y)
-        if curl -fsSL https://rclone.org/install.sh | bash; then
-          log "32;1" "rclone已安装"
-        else
-          log "31;1" "错误：rclone 安装失败，跳过"
-          break
+        curl_download_or_exit https://rclone.org/install.sh /tmp/rclone-install.sh
+        if ! bash /tmp/rclone-install.sh; then
+          rm -f /tmp/rclone-install.sh
+          log "31;1" "错误：rclone 安装脚本执行失败，退出脚本"
+          exit 1
         fi
+        rm -f /tmp/rclone-install.sh
+        if ! command -v rclone &> /dev/null; then
+          log "31;1" "错误：rclone 安装脚本已执行，但未检测到 rclone 命令，退出脚本"
+          exit 1
+        fi
+        log "32;1" "rclone已安装"
         CONFIG_FILE_rclone="/root/.config/rclone/rclone.conf"
         if [ -f "$CONFIG_FILE_rclone" ]; then
           while true; do
