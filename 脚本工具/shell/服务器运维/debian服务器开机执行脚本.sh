@@ -15,6 +15,7 @@
 #   9. 删除内核文件前校验为符号链接(-L)才删除，更保守
 #  10. locale.gen 写入去重、备份目录去重、server_name/备份目录用 %q 写入可安全 source
 #  11. Docker 安装改为「官方源重试 3 次 → 阿里云镜像 apt 源 → 仍失败则退出脚本」
+#  12. 所有 wget 下载统一走 download_or_exit：10 秒无响应超时、最多 3 次，失败即退出脚本
 # ================================================================
 
 set -euo pipefail
@@ -44,6 +45,27 @@ log() {
 
 # 记录脚本最终退出码
 trap 'rc=$?; log "" ">>> $(date "+%F %T") 脚本结束，退出码=$rc"' EXIT
+
+# 统一下载：单次 10 秒无响应即超时，最多尝试 3 次，仍失败则退出脚本
+# 先写临时文件再替换目标，失败时不会破坏已有文件
+# 用法: download_or_exit <url> <输出路径>
+download_or_exit() {
+  local url="$1" out="$2" attempt tmp
+  tmp="${out}.part.$$"
+  for attempt in 1 2 3; do
+    if wget --timeout=10 --tries=1 -O "$tmp" "$url"; then
+      mv -f "$tmp" "$out"
+      return 0
+    fi
+    log "33;1" "下载失败（第 $attempt/3 次，超时 10 秒）：$url"
+    if [ "$attempt" -lt 3 ]; then
+      sleep 3
+    fi
+  done
+  rm -f "$tmp"
+  log "31;1" "错误：连续 3 次下载失败，退出脚本：$url"
+  exit 1
+}
 
 # ============ 变量初始化（配合 set -u） ============
 install_docker=""
@@ -181,11 +203,7 @@ else
   esac
   download_url="https://github.com/ip7z/7zip/releases/download/${latest_ver_7z}/${pkg_7z}"
   log "33;1" "下载 7zip: $download_url"
-  if ! wget --tries=3 --timeout=30 -O /tmp/7zz.tar.xz "$download_url"; then
-    rm -f /tmp/7zz.tar.xz
-    log "31;1" "7z 下载失败（$download_url）"
-    exit 1
-  fi
+  download_or_exit "$download_url" /tmp/7zz.tar.xz
   rm -rf /tmp/7zz
   if ! mkdir -p /tmp/7zz || ! tar -xf /tmp/7zz.tar.xz -C /tmp/7zz; then
     rm -rf /tmp/7zz /tmp/7zz.tar.xz
@@ -352,11 +370,8 @@ else
             case "$rclone_config" in
               y|Y)
                 mkdir -p /root/.config/rclone
-                if wget -O "$CONFIG_FILE_rclone" https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf; then
-                  log "32;1" "rclone配置文件已加载"
-                else
-                  log "31;1" "错误：rclone 配置文件下载失败"
-                fi
+                download_or_exit "https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf" "$CONFIG_FILE_rclone"
+                log "32;1" "rclone配置文件已加载"
                 break
                 ;;
               n|N)
@@ -455,20 +470,14 @@ if [[ ! $server_backup =~ ^[Yy]$ ]]; then
   if [[ ! $install_ssh_push =~ ^[Yy]$ ]]; then
     log "32;1" "不添加ssh推送消息脚本"
   else
-    if wget -O /etc/profile.d/ssh_login_notify.sh https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh; then
-      chmod +x /etc/profile.d/ssh_login_notify.sh
-      log "32;1" "用户登陆ssh推送消息配置完成"
-    else
-      log "31;1" "错误：ssh 登录提醒脚本下载失败"
-    fi
+    download_or_exit "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" /etc/profile.d/ssh_login_notify.sh
+    chmod +x /etc/profile.d/ssh_login_notify.sh
+    log "32;1" "用户登陆ssh推送消息配置完成"
   fi
 else
   # —— 加载备份脚本 ——
   mkdir -p "/root/apps/脚本"
-  if ! wget -O "/root/apps/脚本/$server_name.sh" "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/服务器备份监控脚本.sh"; then
-    log "31;1" "错误：备份脚本下载失败"
-    exit 1
-  fi
+  download_or_exit "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/服务器备份监控脚本.sh" "/root/apps/脚本/$server_name.sh"
   chmod +x "/root/apps/脚本/$server_name.sh"
   log "32;1" "备份脚本已下载到 /root/apps/脚本/$server_name.sh"
 
@@ -659,12 +668,9 @@ else
     log "32;1" "删除ssh_login_notify.sh文件，重新创建"
     rm /etc/profile.d/ssh_login_notify.sh
   fi
-  if wget -O /etc/profile.d/ssh_login_notify.sh https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh; then
-    chmod +x /etc/profile.d/ssh_login_notify.sh
-    log "32;1" "用户登陆ssh推送消息配置完成"
-  else
-    log "31;1" "错误：ssh 登录提醒脚本下载失败"
-  fi
+  download_or_exit "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" /etc/profile.d/ssh_login_notify.sh
+  chmod +x /etc/profile.d/ssh_login_notify.sh
+  log "32;1" "用户登陆ssh推送消息配置完成"
 
   # —— 立即执行一次开机自启任务（后台运行，不阻塞本脚本） ——
   if [ -f /usr/local/bin/boot-exec.sh ]; then
