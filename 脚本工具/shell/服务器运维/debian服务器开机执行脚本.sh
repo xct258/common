@@ -8,7 +8,8 @@
 #   3. BACKUP_PASSWORD 改用"删行+追加 + %q 转义"的安全写入，密码含 $/引号也不会被展开
 #   4. boot-exec.service 增加 Wants=network-online.target，确保网络就绪后再执行
 #   5. boot-exec.service 与常驻任务均以后台方式启动，避免 oneshot 被备份脚本长期阻塞
-#   6. 简化 rclone 配置加载：目标为公开仓库，去掉 GitHub token 输入环节
+#   6. rclone.conf 位于私有仓库：支持 GITHUB_TOKEN/GH_TOKEN 环境变量或交互输入令牌（不回显），
+#      带 Authorization 头走 GitHub API 下载；带令牌的请求不套国内加速，避免令牌泄露
 #   7. 7zip 改为从 GitHub 官方仓库（ip7z/7zip）下载：官网 /a/ 直链已 404，
 #      版本号经 GitHub API 实时查询，查不到直接退出（不使用固定版本），下载后校验可执行性
 #   8. 增加 root 校验、set -u 安全处理、日志输出、EXIT 陷阱
@@ -52,13 +53,21 @@ trap 'rc=$?; log "" ">>> $(date "+%F %T") 脚本结束，退出码=$rc"' EXIT
 GITHUB_MIRRORS="${GITHUB_MIRRORS:-https://ghfast.top https://gh-proxy.com https://ghproxy.net}"
 
 # 单次下载：curl 连接超时 10 秒，wget 总超时 10 秒
+# 除 3 个必选参数外，其余参数按“额外请求头”传给工具（用于私有仓库令牌）
 _dl_once() {
-  local tool="$1" url="$2" out="$3"
+  local tool="$1" url="$2" out="$3"; shift 3
+  local -a args=()
+  local h
   if [ "$tool" = "curl" ]; then
-    curl -fsSL --connect-timeout 10 --max-time 120 -o "$out" "$url"
+    args=(curl -fsSL --connect-timeout 10 --max-time 120)
+    for h in "$@"; do args+=(-H "$h"); done
+    args+=(-o "$out" "$url")
   else
-    wget --timeout=10 --tries=1 -O "$out" "$url"
+    args=(wget --timeout=10 --tries=1)
+    for h in "$@"; do args+=(--header="$h"); done
+    args+=(-O "$out" "$url")
   fi
+  "${args[@]}"
 }
 
 # 判断是否 GitHub 域名（只有这类域名能套国内加速前缀）
@@ -72,12 +81,15 @@ _dl_is_github() {
 
 # 下载：先直连 3 次，失败再逐个尝试国内加速前缀
 # 成功返回 0，失败返回 1（不退出，便于调用方做额外兜底）
-# 用法: download_try <curl|wget> <url> <输出路径>
+# 用法: download_try <curl|wget> <url> <输出路径> [额外请求头...]
+# 带请求头（含令牌）时不做国内加速，避免令牌被第三方代理看到
 download_try() {
-  local tool="$1" url="$2" out="$3" attempt prefix tmp
+  local tool="$1" url="$2" out="$3"; shift 3
+  local -a headers=("$@")
+  local attempt prefix tmp
   tmp="${out}.part.$$"
   for attempt in 1 2 3; do
-    if _dl_once "$tool" "$url" "$tmp"; then
+    if _dl_once "$tool" "$url" "$tmp" "${headers[@]}"; then
       mv -f "$tmp" "$out"
       return 0
     fi
@@ -86,7 +98,7 @@ download_try() {
       sleep 3
     fi
   done
-  if _dl_is_github "$url"; then
+  if [ "${#headers[@]}" -eq 0 ] && _dl_is_github "$url"; then
     for prefix in $GITHUB_MIRRORS; do
       log "33;1" "直连失败，改用国内加速：${prefix}"
       if _dl_once "$tool" "${prefix}${url}" "$tmp"; then
@@ -101,12 +113,29 @@ download_try() {
 }
 
 # 下载失败即退出脚本
-# 用法: download_or_exit <curl|wget> <url> <输出路径>
+# 用法: download_or_exit <curl|wget> <url> <输出路径> [额外请求头...]
 download_or_exit() {
-  if ! download_try "$1" "$2" "$3"; then
-    log "31;1" "错误：直连与国内加速均失败，退出脚本：$2"
+  local tool="$1" url="$2" out="$3"; shift 3
+  if ! download_try "$tool" "$url" "$out" "$@"; then
+    log "31;1" "错误：直连与国内加速均失败，退出脚本：$url"
     exit 1
   fi
+}
+
+# 解析私有仓库下载所需的 GitHub Token
+# 优先取 GITHUB_TOKEN / GH_TOKEN 环境变量，否则交互输入（不回显），结果写入 GH_TOKEN_RESOLVED
+resolve_github_token() {
+  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  if [ -z "$token" ] && [ -t 0 ]; then
+    log "33;1" "rclone.conf 位于私有仓库，需要 GitHub Token（输入不回显，需该仓库 Contents 读权限）"
+    read -rs -p "Token: " token || true
+    echo
+  fi
+  if [ -z "$token" ]; then
+    log "31;1" "错误：未提供 GitHub Token，无法下载私有仓库的 rclone.conf，退出脚本"
+    exit 1
+  fi
+  GH_TOKEN_RESOLVED="$token"
 }
 
 # ============ 变量初始化（配合 set -u） ============
@@ -114,6 +143,7 @@ install_docker=""
 install_rclone=""
 overwrite_config=""
 rclone_config=""
+GH_TOKEN_RESOLVED=""
 reset_name=""
 server_name=""
 skip_name_input=false
@@ -439,7 +469,17 @@ else
             case "$rclone_config" in
               y|Y)
                 mkdir -p /root/.config/rclone
-                download_or_exit wget "https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf" "$CONFIG_FILE_rclone"
+                resolve_github_token
+                # 私有仓库：用 GitHub API 取原始内容，带令牌头；带令牌时不会走国内加速代理
+                download_or_exit wget \
+                  "https://api.github.com/repos/xct258/Documentation/contents/rclone/rclone.conf?ref=main" \
+                  "$CONFIG_FILE_rclone" \
+                  "Authorization: Bearer ${GH_TOKEN_RESOLVED}" \
+                  "Accept: application/vnd.github.raw"
+                if [ ! -s "$CONFIG_FILE_rclone" ]; then
+                  log "31;1" "错误：rclone.conf 下载内容为空，请检查令牌权限是否包含该仓库 Contents 读取，退出脚本"
+                  exit 1
+                fi
                 log "32;1" "rclone配置文件已加载"
                 break
                 ;;
