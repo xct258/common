@@ -9,7 +9,8 @@
 #   4. boot-exec.service 增加 Wants=network-online.target，确保网络就绪后再执行
 #   5. boot-exec.service 与常驻任务均以后台方式启动，避免 oneshot 被备份脚本长期阻塞
 #   6. 简化 rclone 配置加载：目标为公开仓库，去掉 GitHub token 输入环节
-#   7. 7zip 版本解析失败时直接报错退出，由用户检查网络后重试
+#   7. 7zip 改为从 GitHub 官方仓库（ip7z/7zip）下载：官网 /a/ 直链已 404，
+#      版本号取不到时回退固定版本，下载/解压/可执行性均校验后再替换
 #   8. 增加 root 校验、set -u 安全处理、日志输出、EXIT 陷阱
 #   9. 删除内核文件前校验为符号链接(-L)才删除，更保守
 #  10. locale.gen 写入去重、备份目录去重、server_name/备份目录用 %q 写入可安全 source
@@ -160,28 +161,46 @@ done
 if [ -e "/bin/7zz" ]; then
   log "32;1" "7z已安装"
 else
-  latest_ver_7z=$(curl -fsSL --max-time 15 https://www.7-zip.org/download.html 2>/dev/null | grep -oP '7z\K[0-9]{4}' | head -1 || true)
+  # 官网 www.7-zip.org/a/ 直链已 404，改从 GitHub 官方仓库下载：
+  # https://github.com/ip7z/7zip/releases
+  SEVENZIP_FALLBACK_VER="26.05"
+  latest_ver_7z=$(curl -fsSL --max-time 15 https://api.github.com/repos/ip7z/7zip/releases/latest 2>/dev/null \
+    | grep -oP '"tag_name"\s*:\s*"\K[^"]+' | head -1 || true)
   if [ -z "$latest_ver_7z" ]; then
-    log "31;1" "错误：无法解析 7zip 官网最新版本号（网络或页面结构变化），请检查网络后重试"
-    exit 1
+    latest_ver_7z="$SEVENZIP_FALLBACK_VER"
+    log "33;1" "无法获取 7zip 最新版本号（GitHub API 限流或网络异常），回退到 $latest_ver_7z"
   fi
+  # 标签形如 26.05，资产文件名形如 7z2605-linux-x64.tar.xz
+  ver_7z=$(printf '%s' "$latest_ver_7z" | tr -d '.')
   arch=$(uname -m)
   case "$arch" in
-    *x86_64*)  download_url="https://www.7-zip.org/a/7z${latest_ver_7z}-linux-x64.tar.xz" ;;
-    *aarch64*) download_url="https://www.7-zip.org/a/7z${latest_ver_7z}-linux-arm64.tar.xz" ;;
+    *x86_64*)  pkg_7z="7z${ver_7z}-linux-x64.tar.xz" ;;
+    *aarch64*) pkg_7z="7z${ver_7z}-linux-arm64.tar.xz" ;;
     *) log "31;1" "无法确定服务器架构（$arch），请手动安装7z"; exit 1 ;;
   esac
+  download_url="https://github.com/ip7z/7zip/releases/download/${latest_ver_7z}/${pkg_7z}"
   log "33;1" "下载 7zip: $download_url"
-  if ! wget -O /tmp/7zz.tar.xz "$download_url"; then
-    log "31;1" "7z 下载失败"
+  if ! wget --tries=3 --timeout=30 -O /tmp/7zz.tar.xz "$download_url"; then
+    rm -f /tmp/7zz.tar.xz
+    log "31;1" "7z 下载失败（$download_url）"
     exit 1
   fi
-  mkdir -p /tmp/7zz
-  tar -xf /tmp/7zz.tar.xz -C /tmp/7zz
+  rm -rf /tmp/7zz
+  if ! mkdir -p /tmp/7zz || ! tar -xf /tmp/7zz.tar.xz -C /tmp/7zz; then
+    rm -rf /tmp/7zz /tmp/7zz.tar.xz
+    log "31;1" "7z 解压失败"
+    exit 1
+  fi
   chmod +x /tmp/7zz/7zz
+  # 运行一次确认二进制与当前系统兼容，避免装上一个跑不起来的 7zz
+  if ! /tmp/7zz/7zz i >/dev/null 2>&1; then
+    rm -rf /tmp/7zz /tmp/7zz.tar.xz
+    log "31;1" "7z 可执行文件校验失败，请检查系统兼容性或改用 apt install p7zip-full"
+    exit 1
+  fi
   mv /tmp/7zz/7zz /bin/7zz
   rm -rf /tmp/7zz /tmp/7zz.tar.xz
-  log "32;1" "7zip安装成功"
+  log "32;1" "7zip安装成功（版本 $latest_ver_7z）"
 fi
 
 # ============ 安装 Docker（可选） ============
