@@ -15,8 +15,8 @@
 #   9. 删除内核文件前校验为符号链接(-L)才删除，更保守
 #  10. locale.gen 写入去重、备份目录去重、server_name/备份目录用 %q 写入可安全 source
 #  11. Docker 安装改为「官方源重试 3 次 → 阿里云镜像 apt 源 → 仍失败则退出脚本」
-#  12. 所有下载统一超时重试：wget 用 download_or_exit、curl 用 curl_download_or_exit，
-#      10 秒无响应超时、最多 3 次，失败即退出脚本；rclone 安装脚本执行失败也退出
+#  12. 所有下载统一策略：直连 3 次（10 秒超时）→ GitHub 域名改走国内加速前缀 →
+#      仍失败则退出脚本；rclone 官方脚本拿不到时回退国内 apt 源，仍失败退出
 # ================================================================
 
 set -euo pipefail
@@ -47,14 +47,37 @@ log() {
 # 记录脚本最终退出码
 trap 'rc=$?; log "" ">>> $(date "+%F %T") 脚本结束，退出码=$rc"' EXIT
 
-# 统一下载：单次 10 秒无响应即超时，最多尝试 3 次，仍失败则退出脚本
-# 先写临时文件再替换目标，失败时不会破坏已有文件
-# 用法: download_or_exit <url> <输出路径>
-download_or_exit() {
-  local url="$1" out="$2" attempt tmp
+# ============ 下载策略：直连 3 次 → 国内加速 → 仍失败退出 ============
+# 国内加速前缀（仅用于 GitHub 域名），可用同名环境变量覆盖，空格分隔
+GITHUB_MIRRORS="${GITHUB_MIRRORS:-https://ghfast.top https://gh-proxy.com https://ghproxy.net}"
+
+# 单次下载：curl 连接超时 10 秒，wget 总超时 10 秒
+_dl_once() {
+  local tool="$1" url="$2" out="$3"
+  if [ "$tool" = "curl" ]; then
+    curl -fsSL --connect-timeout 10 --max-time 120 -o "$out" "$url"
+  else
+    wget --timeout=10 --tries=1 -O "$out" "$url"
+  fi
+}
+
+# 判断是否 GitHub 域名（只有这类域名能套国内加速前缀）
+_dl_is_github() {
+  case "$1" in
+    https://github.com/*|https://raw.githubusercontent.com/*|https://objects.githubusercontent.com/*|https://codeload.github.com/*)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# 下载：先直连 3 次，失败再逐个尝试国内加速前缀
+# 成功返回 0，失败返回 1（不退出，便于调用方做额外兜底）
+# 用法: download_try <curl|wget> <url> <输出路径>
+download_try() {
+  local tool="$1" url="$2" out="$3" attempt prefix tmp
   tmp="${out}.part.$$"
   for attempt in 1 2 3; do
-    if wget --timeout=10 --tries=1 -O "$tmp" "$url"; then
+    if _dl_once "$tool" "$url" "$tmp"; then
       mv -f "$tmp" "$out"
       return 0
     fi
@@ -63,29 +86,27 @@ download_or_exit() {
       sleep 3
     fi
   done
+  if _dl_is_github "$url"; then
+    for prefix in $GITHUB_MIRRORS; do
+      log "33;1" "直连失败，改用国内加速：${prefix}"
+      if _dl_once "$tool" "${prefix}${url}" "$tmp"; then
+        mv -f "$tmp" "$out"
+        log "32;1" "国内加速下载成功：${prefix}"
+        return 0
+      fi
+    done
+  fi
   rm -f "$tmp"
-  log "31;1" "错误：连续 3 次下载失败，退出脚本：$url"
-  exit 1
+  return 1
 }
 
-# curl 版本下载：连接 10 秒超时，最多尝试 3 次，仍失败则退出脚本
-# 用法: curl_download_or_exit <url> <输出路径>
-curl_download_or_exit() {
-  local url="$1" out="$2" attempt tmp
-  tmp="${out}.part.$$"
-  for attempt in 1 2 3; do
-    if curl -fsSL --connect-timeout 10 --max-time 120 -o "$tmp" "$url"; then
-      mv -f "$tmp" "$out"
-      return 0
-    fi
-    log "33;1" "下载失败（第 $attempt/3 次，连接超时 10 秒）：$url"
-    if [ "$attempt" -lt 3 ]; then
-      sleep 3
-    fi
-  done
-  rm -f "$tmp"
-  log "31;1" "错误：连续 3 次下载失败，退出脚本：$url"
-  exit 1
+# 下载失败即退出脚本
+# 用法: download_or_exit <curl|wget> <url> <输出路径>
+download_or_exit() {
+  if ! download_try "$1" "$2" "$3"; then
+    log "31;1" "错误：直连与国内加速均失败，退出脚本：$2"
+    exit 1
+  fi
 }
 
 # ============ 变量初始化（配合 set -u） ============
@@ -224,7 +245,7 @@ else
   esac
   download_url="https://github.com/ip7z/7zip/releases/download/${latest_ver_7z}/${pkg_7z}"
   log "33;1" "下载 7zip: $download_url"
-  download_or_exit "$download_url" /tmp/7zz.tar.xz
+  download_or_exit wget "$download_url" /tmp/7zz.tar.xz
   rm -rf /tmp/7zz
   if ! mkdir -p /tmp/7zz || ! tar -xf /tmp/7zz.tar.xz -C /tmp/7zz; then
     rm -rf /tmp/7zz /tmp/7zz.tar.xz
@@ -364,15 +385,24 @@ else
     read -r -e install_rclone
     case "$install_rclone" in
       y|Y)
-        curl_download_or_exit https://rclone.org/install.sh /tmp/rclone-install.sh
-        if ! bash /tmp/rclone-install.sh; then
+        # 直连 3 次 → 国内加速（GitHub 前缀 / Debian apt 源）→ 都失败退出
+        if download_try curl https://rclone.org/install.sh /tmp/rclone-install.sh; then
+          if ! bash /tmp/rclone-install.sh; then
+            rm -f /tmp/rclone-install.sh
+            log "31;1" "错误：rclone 安装脚本执行失败，退出脚本"
+            exit 1
+          fi
           rm -f /tmp/rclone-install.sh
-          log "31;1" "错误：rclone 安装脚本执行失败，退出脚本"
-          exit 1
+        else
+          log "33;1" "官方安装脚本不可用，改用国内 apt 源安装 rclone"
+          apt-get update >/dev/null 2>&1 || true
+          if ! apt-get install -y rclone; then
+            log "31;1" "错误：rclone 安装失败（官方脚本与国内 apt 源均失败），退出脚本"
+            exit 1
+          fi
         fi
-        rm -f /tmp/rclone-install.sh
         if ! command -v rclone &> /dev/null; then
-          log "31;1" "错误：rclone 安装脚本已执行，但未检测到 rclone 命令，退出脚本"
+          log "31;1" "错误：安装流程已执行，但未检测到 rclone 命令，退出脚本"
           exit 1
         fi
         log "32;1" "rclone已安装"
@@ -397,7 +427,7 @@ else
             case "$rclone_config" in
               y|Y)
                 mkdir -p /root/.config/rclone
-                download_or_exit "https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf" "$CONFIG_FILE_rclone"
+                download_or_exit wget "https://raw.githubusercontent.com/xct258/Documentation/refs/heads/main/rclone/rclone.conf" "$CONFIG_FILE_rclone"
                 log "32;1" "rclone配置文件已加载"
                 break
                 ;;
@@ -497,14 +527,14 @@ if [[ ! $server_backup =~ ^[Yy]$ ]]; then
   if [[ ! $install_ssh_push =~ ^[Yy]$ ]]; then
     log "32;1" "不添加ssh推送消息脚本"
   else
-    download_or_exit "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" /etc/profile.d/ssh_login_notify.sh
+    download_or_exit wget "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" /etc/profile.d/ssh_login_notify.sh
     chmod +x /etc/profile.d/ssh_login_notify.sh
     log "32;1" "用户登陆ssh推送消息配置完成"
   fi
 else
   # —— 加载备份脚本 ——
   mkdir -p "/root/apps/脚本"
-  download_or_exit "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/服务器备份监控脚本.sh" "/root/apps/脚本/$server_name.sh"
+  download_or_exit wget "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/服务器备份监控脚本.sh" "/root/apps/脚本/$server_name.sh"
   chmod +x "/root/apps/脚本/$server_name.sh"
   log "32;1" "备份脚本已下载到 /root/apps/脚本/$server_name.sh"
 
@@ -695,7 +725,7 @@ else
     log "32;1" "删除ssh_login_notify.sh文件，重新创建"
     rm /etc/profile.d/ssh_login_notify.sh
   fi
-  download_or_exit "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" /etc/profile.d/ssh_login_notify.sh
+  download_or_exit wget "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" /etc/profile.d/ssh_login_notify.sh
   chmod +x /etc/profile.d/ssh_login_notify.sh
   log "32;1" "用户登陆ssh推送消息配置完成"
 
