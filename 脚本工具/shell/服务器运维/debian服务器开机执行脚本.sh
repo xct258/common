@@ -8,8 +8,9 @@
 #   3. BACKUP_PASSWORD 改用"删行+追加 + %q 转义"的安全写入，密码含 $/引号也不会被展开
 #   4. boot-exec.service 增加 Wants=network-online.target，确保网络就绪后再执行
 #   5. boot-exec.service 与常驻任务均以后台方式启动，避免 oneshot 被备份脚本长期阻塞
-#   6. rclone.conf 位于私有仓库：支持 GITHUB_TOKEN/GH_TOKEN 环境变量或交互输入令牌（不回显），
-#      带 Authorization 头走 GitHub API 下载；带令牌的请求不套国内加速，避免令牌泄露
+#   6. rclone.conf 位于私有仓库：令牌优先取 GITHUB_TOKEN/GH_TOKEN，其次交互菜单选择
+#      「使用已保存令牌 / 输入并保存 / 仅本次使用」（保存到 /root/.config/server-ops/github_token，600）；
+#      带 Authorization 头走 GitHub API 下载，带令牌的请求不套国内加速，避免令牌泄露
 #   7. 7zip 改为从 GitHub 官方仓库（ip7z/7zip）下载：官网 /a/ 直链已 404，
 #      版本号经 GitHub API 实时查询，查不到直接退出（不使用固定版本），下载后校验可执行性
 #   8. 增加 root 校验、set -u 安全处理、日志输出、EXIT 陷阱
@@ -122,17 +123,83 @@ download_or_exit() {
   fi
 }
 
-# 解析私有仓库下载所需的 GitHub Token
-# 优先取 GITHUB_TOKEN / GH_TOKEN 环境变量，否则交互输入（不回显），结果写入 GH_TOKEN_RESOLVED
-resolve_github_token() {
-  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
-  if [ -z "$token" ] && [ -t 0 ]; then
-    log "33;1" "rclone.conf 位于私有仓库，需要 GitHub Token（输入不回显，需该仓库 Contents 读权限）"
-    read -rs -p "Token: " token || true
-    echo
+# 令牌保存路径（仅 root 可读），可用 GH_TOKEN_FILE 覆盖
+GH_TOKEN_FILE="${GH_TOKEN_FILE:-/root/.config/server-ops/github_token}"
+
+# 交互输入令牌（不回显），只把令牌输出到 stdout，提示走 stderr
+_read_token_input() {
+  local token=""
+  echo -n "Token（输入不回显）: " >&2
+  read -rs token || true
+  echo >&2
+  printf '%s' "$token"
+}
+
+# 保存令牌到文件，权限 600
+_save_github_token() {
+  local token="$1" dir
+  dir=$(dirname "$GH_TOKEN_FILE")
+  if ! mkdir -p "$dir"; then
+    log "31;1" "错误：创建目录失败：$dir"
+    exit 1
   fi
+  chmod 700 "$dir" 2>/dev/null || true
+  if ! (umask 077; printf '%s\n' "$token" > "$GH_TOKEN_FILE"); then
+    log "31;1" "错误：令牌保存失败：$GH_TOKEN_FILE"
+    exit 1
+  fi
+  chmod 600 "$GH_TOKEN_FILE" 2>/dev/null || true
+  log "32;1" "令牌已保存到 $GH_TOKEN_FILE（权限 600），下次自动使用"
+}
+
+# 解析私有仓库下载所需的 GitHub Token
+# 优先级：环境变量 GITHUB_TOKEN/GH_TOKEN → 已保存的令牌（交互时可选）→ 现场输入
+# 结果写入 GH_TOKEN_RESOLVED
+resolve_github_token() {
+  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}" choice=""
+  if [ -n "$token" ]; then
+    log "32;1" "使用环境变量中的 GitHub Token"
+    GH_TOKEN_RESOLVED="$token"
+    return 0
+  fi
+
+  if [ -t 0 ]; then
+    log "33;1" "rclone.conf 位于私有仓库，需要一个 GitHub Token（需该仓库 Contents 读权限）"
+    if [ -s "$GH_TOKEN_FILE" ]; then
+      log "33;1" "已保存令牌：$GH_TOKEN_FILE"
+      log "33;1" "  1) 使用已保存的令牌"
+      log "33;1" "  2) 重新输入并保存（覆盖旧令牌）"
+      log "33;1" "  3) 临时输入，仅本次使用（不保存）"
+      while true; do
+        read -r -e -p "请选择 [1-3]: " choice || true
+        case "$choice" in
+          1) token=$(cat "$GH_TOKEN_FILE" 2>/dev/null || true); break ;;
+          2) token=$(_read_token_input); _save_github_token "$token"; break ;;
+          3) token=$(_read_token_input); break ;;
+          *) log "31;1" "无效输入，请输入 1、2 或 3" ;;
+        esac
+      done
+    else
+      log "33;1" "  1) 输入并保存（下次自动使用，推荐）"
+      log "33;1" "  2) 输入但仅本次使用（不保存）"
+      while true; do
+        read -r -e -p "请选择 [1-2]: " choice || true
+        case "$choice" in
+          1) token=$(_read_token_input); _save_github_token "$token"; break ;;
+          2) token=$(_read_token_input); break ;;
+          *) log "31;1" "无效输入，请输入 1 或 2" ;;
+        esac
+      done
+    fi
+  elif [ -s "$GH_TOKEN_FILE" ]; then
+    # 非交互：没有环境变量时，退回已保存的令牌
+    token=$(cat "$GH_TOKEN_FILE" 2>/dev/null || true)
+    log "33;1" "非交互模式，使用已保存的令牌：$GH_TOKEN_FILE"
+  fi
+
   if [ -z "$token" ]; then
     log "31;1" "错误：未提供 GitHub Token，无法下载私有仓库的 rclone.conf，退出脚本"
+    log "31;1" "提示：可用 GITHUB_TOKEN 环境变量传入，或先手动写入 $GH_TOKEN_FILE"
     exit 1
   fi
   GH_TOKEN_RESOLVED="$token"
@@ -471,11 +538,15 @@ else
                 mkdir -p /root/.config/rclone
                 resolve_github_token
                 # 私有仓库：用 GitHub API 取原始内容，带令牌头；带令牌时不会走国内加速代理
-                download_or_exit wget \
+                if ! download_try wget \
                   "https://api.github.com/repos/xct258/Documentation/contents/rclone/rclone.conf?ref=main" \
                   "$CONFIG_FILE_rclone" \
                   "Authorization: Bearer ${GH_TOKEN_RESOLVED}" \
-                  "Accept: application/vnd.github.raw"
+                  "Accept: application/vnd.github.raw"; then
+                  log "31;1" "错误：rclone.conf 下载失败，请确认令牌有该仓库 Contents 读权限且未过期"
+                  log "31;1" "若令牌已更换，删除旧令牌后重跑：rm -f $GH_TOKEN_FILE"
+                  exit 1
+                fi
                 if [ ! -s "$CONFIG_FILE_rclone" ]; then
                   log "31;1" "错误：rclone.conf 下载内容为空，请检查令牌权限是否包含该仓库 Contents 读取，退出脚本"
                   exit 1
