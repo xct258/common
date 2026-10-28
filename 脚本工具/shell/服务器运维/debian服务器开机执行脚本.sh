@@ -14,6 +14,7 @@
 #   8. 增加 root 校验、set -u 安全处理、日志输出、EXIT 陷阱
 #   9. 删除内核文件前校验为符号链接(-L)才删除，更保守
 #  10. locale.gen 写入去重、备份目录去重、server_name/备份目录用 %q 写入可安全 source
+#  11. Docker 安装改为「官方源重试 3 次 → 阿里云镜像 apt 源 → 仍失败则退出脚本」
 # ================================================================
 
 set -euo pipefail
@@ -204,6 +205,63 @@ else
 fi
 
 # ============ 安装 Docker（可选） ============
+# 官方源安装：下载失败或脚本执行失败都算本轮失败，最多重试 3 次
+install_docker_official() {
+  local attempt
+  for attempt in 1 2 3; do
+    log "33;1" "官方源安装 Docker（第 $attempt/3 次尝试）"
+    if curl -fsSL --connect-timeout 15 --max-time 120 https://get.docker.com -o /tmp/get-docker.sh; then
+      if bash /tmp/get-docker.sh; then
+        rm -f /tmp/get-docker.sh
+        log "32;1" "官方源安装 Docker 成功"
+        return 0
+      fi
+    fi
+    sleep 3
+  done
+  rm -f /tmp/get-docker.sh
+  return 1
+}
+
+# 阿里云镜像安装：直接走 apt 源，不依赖 get.docker.com 是否可达
+install_docker_aliyun() {
+  local distro codename arch list key
+  log "33;1" "官方源失败，回退阿里云镜像安装 Docker"
+  distro=$(. /etc/os-release && echo "${ID:-debian}") || distro=debian
+  codename=$(. /etc/os-release && echo "${VERSION_CODENAME:-bookworm}") || codename=bookworm
+  [ "$distro" = "ubuntu" ] || distro=debian
+  arch=$(dpkg --print-architecture) || return 1
+  list="/etc/apt/sources.list.d/docker.list"
+  key="/etc/apt/keyrings/docker.asc"
+
+  apt-get update || return 1
+  apt-get install -y ca-certificates curl gnupg || return 1
+  install -m 0755 -d /etc/apt/keyrings || return 1
+  if ! curl -fsSL --connect-timeout 15 --max-time 60 \
+      "https://mirrors.aliyun.com/docker-ce/linux/${distro}/gpg" -o "$key"; then
+    return 1
+  fi
+  chmod a+r "$key"
+
+  # 写入源之后任何一步失败都要删掉源文件，否则下次 apt-get update 会一直报错
+  if ! printf 'deb [arch=%s signed-by=%s] https://mirrors.aliyun.com/docker-ce/linux/%s %s stable\n' \
+      "$arch" "$key" "$distro" "$codename" > "$list"; then
+    rm -f "$list"
+    return 1
+  fi
+  if ! apt-get update; then
+    rm -f "$list"
+    return 1
+  fi
+  if ! apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+    rm -f "$list"
+    return 1
+  fi
+  systemctl enable --now docker >/dev/null 2>&1 || true
+  log "32;1" "阿里云镜像安装 Docker 成功"
+  return 0
+}
+
 if command -v docker &> /dev/null; then
   log "32;1" "docker已安装，无需重复安装"
 else
@@ -212,15 +270,17 @@ else
     read -r -e install_docker
     case "$install_docker" in
       y|Y)
-        if curl -fsSL https://get.docker.com | bash -s docker; then
-          if command -v docker &> /dev/null; then
-            log "32;1" "验证成功：Docker 安装成功！当前版本如下："
-            docker --version
-          else
-            log "31;1" "错误：Docker 脚本执行完毕，但系统中未检测到 docker 命令，可能安装失败。"
-          fi
+        # 直连重试 3 次 → 回退阿里云镜像 → 都失败则退出脚本
+        if ! install_docker_official && ! install_docker_aliyun; then
+          log "31;1" "错误：官方源与阿里云镜像均安装失败，请检查网络后手动安装 Docker"
+          exit 1
+        fi
+        if command -v docker &> /dev/null; then
+          log "32;1" "验证成功：Docker 安装成功！当前版本如下："
+          docker --version
         else
-          log "31;1" "错误：Docker 官方安装脚本执行失败。"
+          log "31;1" "错误：安装流程已执行，但系统中未检测到 docker 命令，安装失败"
+          exit 1
         fi
         break
         ;;
