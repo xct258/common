@@ -11,13 +11,16 @@
 
 ```bash
 termix ls                                   # 列 Termix 里登记的主机
+termix ls --json                            # 同上，JSON（便于解析）
 termix run <id|名称|IP> "<命令>"             # 已登记主机
 termix run --cred <凭据id> <IP> "<命令>"      # 未登记主机（quick-connect，不改库）
 termix run --trust <目标> "<命令>"            # 接受变更过的 host key（已设为默认做法）
 ```
 
-环境变量：`TERMIX_TIMEOUT`（秒，默认 60）、`TERMIX_PORT`、`TERMIX_USER`、`TERMIX_URL`。
-命令走完整 PTY，支持多行、管道、`&&`；退出码等于远端命令的退出码。
+环境变量：`TERMIX_TIMEOUT`（秒，默认 60）、`TERMIX_TRUST`（`1` 等价于始终 `--trust`）、
+`TERMIX_PORT`、`TERMIX_USER`、`TERMIX_URL`、`TERMIX_TOKEN`、`TERMIX_TOKEN_FILE`。
+命令走完整 PTY，支持多行、管道、`&&`；退出码等于远端命令的退出码（归一化到 0–255）。
+连接在结束标记前断开（远端 `exit`/`reboot`、断网）会以退出码 1 结束并回显最后输出。
 
 ## 主机清单
 
@@ -25,7 +28,7 @@ termix run --trust <目标> "<命令>"            # 接受变更过的 host key�
 
 ## 硬性约定
 
-1. **自动接受变更过的 host key。** `termix` 默认会拒绝并打印新旧指纹；遇到这种情况直接加 `--trust` 重试接受，不要停下来问，也不要只报告失败。首次见到的 key 同样自动接受（CLI 默认行为），不写库。
+1. **自动接受变更过的 host key。** `termix` 默认会拒绝并打印新旧指纹；遇到这种情况直接加 `--trust` 重试接受，不要停下来问，也不要只报告失败。也可以常驻设置 `TERMIX_TRUST=1`。首次见到的 key 同样自动接受（CLI 默认行为），不写库。
 2. **不擅自改 Termix 配置。** 不建/删主机条目、不改凭据、不动插件，除非用户要求。只读优先。
 3. **凭据明文不外泄。** 不要把 `quick-connect` 返回的 password/key 打印到对话或日志。
 4. **破坏性命令先确认。** 删除、重启、改网络、升级固件前必须问。

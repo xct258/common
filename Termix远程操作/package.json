@@ -1,6 +1,6 @@
 {
   "name": "termix-cli",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "用一条命令操作 Termix 里登记的服务器",
   "bin": {
     "termix": "./termix"
