@@ -365,8 +365,12 @@ EOF
 
 # ---------------- SSH 登录提醒 ----------------
 setup_ssh_notify() {
-  if ! ask_yn "是否添加 SSH 登录提醒脚本" n; then
-    log "32;1" "不添加 SSH 登录提醒"
+  local prompt="是否添加 SSH 登录提醒脚本"
+  if [ -f "$SSH_NOTIFY" ]; then
+    prompt="SSH 登录提醒已安装，是否重新安装/更新"
+  fi
+  if ! ask_yn "$prompt" n; then
+    log "32;1" "跳过 SSH 登录提醒"
     return 0
   fi
   download_or_die \
