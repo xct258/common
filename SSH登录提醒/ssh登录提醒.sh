@@ -43,19 +43,18 @@ _ssh_login_notify() {
   [ -n "$server_name" ] || server_name=$(hostname 2>/dev/null || echo unknown)
 
   # ---------- 登录信息 ----------
-  local client_ip="" user login_user host v4 v6 now
+  local client_ip="" user login_user v4 v6 now
   client_ip="${SSH_CONNECTION%% *}"          # 第一段是客户端 IP
   user=$(whoami 2>/dev/null || echo unknown)
   login_user="${SUDO_USER:-}"                # sudo -i 时的原始用户
-  host=$(hostname 2>/dev/null || echo unknown)
   now=$(date '+%Y-%m-%d %H:%M:%S')
   v4=$(curl -4 -s --connect-timeout 5 --max-time 8 https://api.ipify.org 2>/dev/null || true)
   v6=$(curl -6 -s --connect-timeout 5 --max-time 8 https://api6.ipify.org 2>/dev/null || true)
 
   # ---------- 正文（服务端会自动加【服务通知】头，不要手写） ----------
   local message
-  message=$(printf '**时间**：%s\n**主机**：%s\n**用户**：%s%s\n**来源 IP**：%s\n**服务器 IPv4**：%s\n**服务器 IPv6**：%s' \
-    "$now" "$host" "$user" \
+  message=$(printf '**时间**：%s\n**用户**：%s%s\n**来源 IP**：%s\n**服务器 IPv4**：%s\n**服务器 IPv6**：%s' \
+    "$now" "$user" \
     "${login_user:+（sudo 提权自 ${login_user}）}" \
     "${client_ip:-未知}" "${v4:-未获取}" "${v6:-未获取}")
 

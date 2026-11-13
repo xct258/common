@@ -28,7 +28,7 @@ https://push-server.o1-1.xct258.top/api/push
 | `category` | `service` |
 | `topic` | `server/ssh-login` |
 | `title` | `SSH 登录提醒` |
-| `message` | Markdown 正文：时间、主机、用户（含 sudo 来源）、来源 IP、服务器 IPv4/IPv6 |
+| `message` | Markdown 正文：时间、用户（含 sudo 来源）、来源 IP、服务器 IPv4/IPv6 |
 | `status` | `info` |
 | `push_to_mqtt` | `true` |
 | `msg_type` | `markdown` |
