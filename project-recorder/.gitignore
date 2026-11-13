@@ -1,0 +1,26 @@
+# .NET / MSBuild 构建输出
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio / VS Code / Rider
+.vs/
+.vscode/
+.idea/
+
+# 发布产物：publish/小工具.exe 随仓库一起发布，只忽略附带的 config/pdb
+publish/*.config
+publish/*.pdb
+
+# 程序运行时在 exe 同级生成的数据目录与加密库（绝不进仓库）
+Data/
+*.dat
+*.img
+
+# NuGet
+*.nupkg
+*.snupkg
+project.lock.json

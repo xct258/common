@@ -1,0 +1,117 @@
+<UserControl x:Class="ProjectRecorder.Views.WorkloadView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:panels="clr-namespace:ProjectRecorder.Panels">
+    <!-- 工作量标签页：自动记当前班次 + 快捷计数卡片 -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"
+                        VerticalAlignment="Center">
+                <Button x:Name="BtnWorkShift" Style="{StaticResource BtnGhost}"
+                        FontWeight="Bold"
+                        ToolTip="点击选择日期与班次（补录当前班次之前的工作量）"
+                        Click="BtnWorkShift_Click"/>
+                <TextBlock x:Name="TxtWorkBackfill" Text="补录中" FontSize="11"
+                           Foreground="#D97706" VerticalAlignment="Center"
+                           Margin="8,0,0,0" Visibility="Collapsed"/>
+                <Button x:Name="BtnWorkNow" Content="回到现在" Height="30" Margin="8,0,0,0"
+                        Style="{StaticResource BtnGhost}" Click="BtnWorkNow_Click"
+                        ToolTip="快速回到当前班次" Visibility="Collapsed"/>
+            </StackPanel>
+            <Button x:Name="BtnAddWProcess" Content="＋ 添加工序" HorizontalAlignment="Right"
+                    Style="{StaticResource BtnPrimary}" Click="BtnAddWProcess_Click"/>
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="12,0,12,12">
+            <TextBlock x:Name="TxtWProcessEmpty"
+                       Text="暂无工序"
+                       Style="{StaticResource EmptyText}" TextWrapping="Wrap"
+                       Margin="20" Visibility="Collapsed"/>
+            <ListBox x:Name="LstWorkProcess" SelectionMode="Single"
+                     Style="{StaticResource CleanList}"
+                     PreviewMouseRightButtonDown="LstWorkProcess_RightButtonDown"
+                     PreviewMouseRightButtonUp="ListBlankUp"
+                     ContextMenuOpening="LstWorkProcess_ContextMenuOpening"
+                     ScrollViewer.CanContentScroll="False"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <panels:AdaptiveWrapPanel/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="查看执行明细" Click="MenuWProcessDetail_Click"/>
+                        <Separator/>
+                        <MenuItem Header="上移" Click="MenuWProcessUp_Click"/>
+                        <MenuItem Header="下移" Click="MenuWProcessDown_Click"/>
+                        <MenuItem Header="删除该工序" Click="MenuDeleteWProcess_Click"/>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Width="160" Height="200" Margin="0,8" Padding="12,10"
+                                Style="{StaticResource CardBorder}"
+                                PreviewMouseLeftButtonUp="WorkCard_Click">
+                            <Grid>
+                                <StackPanel x:Name="NormalPanel" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Process.ProcessName}" FontSize="16"
+                                               FontWeight="Bold" Foreground="#111827"
+                                               HorizontalAlignment="Center" TextAlignment="Center"
+                                               TextWrapping="Wrap" MaxHeight="46" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock FontSize="13" Foreground="#6B7280" Margin="0,4,0,0"
+                                               HorizontalAlignment="Center">
+                                        <Run Text="已完成："/><Run Text="{Binding ShiftQty}"/>
+                                    </TextBlock>
+                                    <TextBlock FontSize="11" Foreground="#9CA3AF" Margin="0,2,0,0"
+                                               HorizontalAlignment="Center">
+                                        <Run Text="最后完成时间："/><Run Text="{Binding LastTimeText}"/>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                                Margin="0,10,0,0">
+                                        <Button Content="-" Width="30" Height="30"
+                                                Style="{StaticResource BtnStep}"
+                                                Click="BtnWCardMinus_Click"/>
+                                        <TextBox x:Name="QtyBox" Text="1" Width="48" Height="30" Margin="6,0,0,0"
+                                                 FontSize="15" TextAlignment="Center"
+                                                 VerticalContentAlignment="Center"
+                                                 PreviewTextInput="TxtQty_PreviewTextInput"/>
+                                        <Button Content="+" Width="30" Height="30" Margin="6,0,0,0"
+                                                Style="{StaticResource BtnStep}"
+                                                Click="BtnWCardPlus_Click"/>
+                                    </StackPanel>
+                                    <Button Content="添 加" Height="30" Margin="0,8,0,0"
+                                            Style="{StaticResource BtnPrimary}" Click="BtnWCardSave_Click"/>
+                                </StackPanel>
+
+                                <StackPanel x:Name="OtherPanel" Visibility="Collapsed"
+                                            VerticalAlignment="Center" ToolTip="点击添加项目和时间">
+                                    <TextBlock Text="其它" FontSize="20" FontWeight="Bold"
+                                               Foreground="#1F4E79" HorizontalAlignment="Center"/>
+                                    <TextBlock FontSize="14" Foreground="#374151" Margin="0,12,0,0"
+                                               HorizontalAlignment="Center">
+                                        <Run Text="本班："/><Run Text="{Binding ShiftQty}"/><Run Text=" 小时"/>
+                                    </TextBlock>
+                                    <TextBlock Text="点击添加项目和时间" FontSize="12"
+                                               Foreground="#2563EB" Margin="0,16,0,0"
+                                               HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsOther}" Value="True">
+                                <Setter TargetName="NormalPanel" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="OtherPanel" Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Grid>
+</UserControl>

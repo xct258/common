@@ -1,0 +1,11 @@
+services:
+  random-image:
+    image: php:apache
+    container_name: random-image
+    restart: always
+    ports:
+      - "8181:80"
+    volumes:
+      - ./var/www/html:/var/www/html
+      - /mnt/ssd-1/shared/image/收藏/pc:/home/xct258/images/pc
+      - /mnt/ssd-1/shared/image/收藏/pe:/home/xct258/images/pe

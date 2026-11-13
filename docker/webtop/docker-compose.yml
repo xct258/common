@@ -1,0 +1,22 @@
+services:
+  webtop:
+    image: lscr.io/linuxserver/webtop:debian-kde
+    container_name: webtop
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - CUSTOM_USER=xct258
+      - PASSWORD=这里换成自己的密码
+      - TZ=Asia/Shanghai
+      - LC_ALL=zh_CN.UTF-8
+      - TITLE=o1-2 #optional
+      - CUSTOM_PORT=3300
+      - CUSTOM_HTTPS_PORT=3301
+    volumes:
+      - /home/xct258/webtop共享文件夹:/config
+      - /usr/bin/rclone:/usr/bin/rclone
+      - /root/.config/rclone/rclone.conf:/root/.config/rclone/rclone.conf
+    shm_size: "1gb" #optional
+    restart: always
+

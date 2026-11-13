@@ -1,0 +1,10 @@
+apt-get update && apt-get install -y locales && sed -i '/zh_CN.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8
+
+# 1. 把中文变量强行写入用户的终端启动脚本末尾
+echo "export LANG=zh_CN.UTF-8" >> ~/.bashrc
+echo "export LC_ALL=zh_CN.UTF-8" >> ~/.bashrc
+
+# 2. 让它在当前终端立刻生效
+source ~/.bashrc

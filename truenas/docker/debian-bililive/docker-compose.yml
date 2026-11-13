@@ -1,0 +1,17 @@
+services:
+  khx-live:
+    container_name: khx-live
+    image: xct258/khx-live
+    network_mode: host
+    restart: always
+
+    environment:
+      - XCT258_GITHUB_TOKEN=
+      - Bililive_USER=your_bilibili_username
+      - Bililive_PASS=your_bilibili_password
+
+    devices:
+      - /dev/dri:/dev/dri
+
+    volumes:
+      - /mnt/ssd-1/shared/bililive:/rec

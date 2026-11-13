@@ -1,0 +1,47 @@
+TrueNAS SMB 权限隐藏子文件夹
+
+这是一个关于在 TrueNAS SMB 共享中隐藏用户无权限访问子文件夹的说明文档，
+帮助管理员通过命令行和 ACL 配置实现按权限自动隐藏子目录。
+
+作用：
+在 TrueNAS SMB 共享中，通常希望：
+- 用户可以看到父目录
+- 没有访问权限的子文件夹或文件自动隐藏
+- 防止无权用户查看子文件夹或文件
+
+配置步骤：
+
+1. 查看 SMB 共享
+
+在 shell 中执行：
+midclt call sharing.smb.query
+
+找到需要修改的共享，记下其 ID，例如 2。
+
+2. 设置隐藏无权限文件夹
+
+执行：
+midclt call sharing.smb.update 2 "{\"auxsmbconf\":\"hide unreadable = yes\\nhide unwriteable files = yes\"}"
+
+说明：
+- hide unreadable = yes  → 隐藏用户无法读取或列出的文件夹/文件
+- hide unwriteable files = yes → 隐藏用户无法写入的文件/文件夹
+
+
+3. 重启 SMB 服务生效
+
+
+示例目录效果：
+
+/shared
+  ├─ public/           # 所有用户可见
+  ├─ secret/           # Alice 无权限 → 在客户端隐藏
+  ├─ read-only.txt     # Alice 无写权限 → 在客户端隐藏
+
+注意事项：
+- 确保 ACL 配置正确，否则隐藏不会生效
+- Windows 客户端可能缓存 SMB 信息，需要重连才能看到隐藏效果
+
+参考文档：
+- Samba 官方文档：https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html
+- TrueNAS SMB Sharing：https://www.truenas.com/docs/core/sharing/smb/

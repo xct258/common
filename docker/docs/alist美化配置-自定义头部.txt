@@ -1,0 +1,172 @@
+<style>
+ 
+/* 去除通知栏 右上角 X */
+.notify-render .hope-close-button{
+    display: none;
+}
+
+/*白天背景图*/
+.hope-ui-light {
+    background-image: url("https://random-image.o1-2.xct258.top") !important;
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: fixed;
+    background-position-x: center;
+    position: relative;
+}
+/*夜间背景图*/
+.hope-ui-dark {
+    background-image: url("https://random-image.o1-2.xct258.top") !important;
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: fixed;
+    background-position-x: center;
+    position: relative;
+}
+/* 夜间模式下的暗化层 */
+.hope-ui-dark::before {
+    content: "";
+    position: fixed; /* 固定在视口 */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5); /* 调整透明度以控制暗化程度 */
+    z-index: -1; /* 放在背景图片之下 */
+}
+
+/* 确保内容在暗化层之上 */
+.hope-ui-dark * {
+    position: relative;
+    z-index: 1;
+}
+
+/*主列表白天模式透明*/
+.obj-box.hope-stack.hope-c-dhzjXW.hope-c-PJLV.hope-c-PJLV-igScBhH-css {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+}
+/*主列表夜间模式透明*/
+.obj-box.hope-stack.hope-c-dhzjXW.hope-c-PJLV.hope-c-PJLV-iigjoxS-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+}
+/*readme白天模式透明*/
+.hope-c-PJLV.hope-c-PJLV-ikSuVsl-css {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+}
+/*readme夜间模式透明*/
+.hope-c-PJLV.hope-c-PJLV-iiuDLME-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+}
+
+/*顶部右上角切换按钮透明*/
+.hope-ui-light .hope-c-ivMHWx-hZistB-cv.hope-icon-button {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+}
+.hope-ui-dark .hope-c-ivMHWx-hZistB-cv.hope-icon-button {
+    background-color: rgb(0 0 0 / 50%) !important;
+}
+
+/*右下角侧边栏按钮透明 第一个是白天 第二个是夜间*/
+.hope-ui-light .hope-c-PJLV-ijgzmFG-css {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+}
+.hope-ui-dark .hope-c-PJLV-ijgzmFG-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+}
+
+/*白天模式代码块透明*/
+.hope-ui-light pre {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+/*夜间模式代码块透明*/
+.hope-ui-dark pre {
+    background-color: rgba(255, 255, 255, 0) !important;
+}
+
+/*左侧侧边栏目录*/
+/*白天模式*/
+.hope-ui-light .hope-c-PJLV-ieGWMbI-css {
+    background: rgba(255, 255, 255, 0.5) !important;
+}
+/*夜间模式*/
+.hope-ui-dark .hope-c-PJLV-ieGWMbI-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+}
+
+/* 返回顶部 */
+.hope-c-PJLV-ihVEsOa-css {
+    background: rgba(255, 255, 255, 0.5) !important;
+}
+.hope-ui-dark .hope-c-PJLV-ihVEsOa-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+}
+
+/*正常情况未使用吸附功能*/
+/*顶部*/
+.hope-c-PJLV-ikaMhsQ-css {
+    background: rgba(255, 255, 255, 0) !important;
+}
+/*导航条*/
+/*白天模式*/
+.hope-ui-light .hope-c-PJLV-idaeksS-css {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+    border-radius: var(--hope-radii-xl) !important;
+}
+/*夜间模式*/
+.hope-ui-dark .hope-c-PJLV-idaeksS-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+    border-radius: var(--hope-radii-xl) !important;
+}
+/* 吸附到页面顶部 */
+/*顶部*/
+.hope-c-PJLV-icWrYmg-css {
+    background: rgba(255, 255, 255, 0) !important;
+}
+/*导航条*/
+.hope-c-PJLV-icKsjdm-css::after {
+    background: rgba(255, 255, 255, 0) !important;
+}
+/*白天模式*/
+.hope-ui-light .hope-c-PJLV-icKsjdm-css {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+    border-radius: var(--hope-radii-xl) !important;
+}
+/*夜间模式*/
+.hope-ui-dark .hope-c-PJLV-icKsjdm-css {
+    background-color: rgb(0 0 0 / 50%) !important;
+    border-radius: var(--hope-radii-xl) !important;
+}
+
+/*仅吸附导航栏*/
+/*导航条*/
+.hope-c-PJLV-ifdXShc-css::after {
+    background: rgba(255, 255, 255, 0) !important;
+}
+/*白天模式*/
+.hope-ui-light .hope-c-hrsMRY {
+    background-color: rgba(255, 255, 255, 0.5) !important;
+    border-radius: var(--hope-radii-xl) !important;
+}
+/*夜间模式*/
+.hope-ui-dark .hope-c-hrsMRY {
+    background-color: rgb(0 0 0 / 50%) !important;
+    border-radius: var(--hope-radii-xl) !important;
+}
+
+/*底部CSS，.App .table这三个一起的*/
+dibu {
+    border-top: 0px;
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    margin: 0px;
+    padding: 0px;
+}
+.App {
+    min-height: 85vh;
+}
+.table {
+    margin: auto;
+}
+
+</style>

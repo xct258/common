@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>页面异常</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .contact-info {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .contact-info p {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>页面异常，可以联系我寻求帮助</h1>
+    <div class="contact-info">
+        <p><strong>邮箱：</strong><a href="mailto:xct258@outlook.com">xct258@outlook.com</a></p>
+        <p><strong>当前域名：</strong><span id="domain"></span></p>
+    </div>
+
+<script>
+    /**
+     * 获取当前访问的最准确域名
+     * 优先级：
+     * 1. window.location.hostname（标准访问）
+     * 2. document.referrer（如果在 iframe 中）
+     * 3. window.location.href 解析（备用方案）
+     */
+    function getCurrentDomain() {
+        try {
+            // 标准方式
+            let hostname = window.location.hostname;
+
+            // 如果在 iframe 或 hostname 为空，尝试使用 document.referrer
+            if ((!hostname || hostname === 'localhost') && document.referrer) {
+                const referrerUrl = new URL(document.referrer);
+                hostname = referrerUrl.hostname;
+            }
+
+            // 备用解析
+            if (!hostname) {
+                hostname = new URL(window.location.href).hostname;
+            }
+
+            return hostname;
+        } catch (e) {
+            console.warn('获取域名异常:', e);
+            return '未知域名';
+        }
+    }
+
+    // 显示在页面上
+    document.getElementById('domain').textContent = getCurrentDomain();
+</script>
+
+
+</body>
+</html>

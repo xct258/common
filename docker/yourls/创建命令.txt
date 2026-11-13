@@ -1,0 +1,39 @@
+mkdir -p /home/xct258/docker/yourls
+cd /home/xct258/docker/yourls
+nano docker-compose.yml
+
+# docker-compose.yml文件内容
+services:
+
+  mysql:
+    image: mysql:9.2
+    environment:
+      - MYSQL_ROOT_PASSWORD=这里需要一个随机密码
+      - MYSQL_DATABASE=yourls
+      - MYSQL_USER=xct258
+      - MYSQL_PASSWORD=这里需要一个密码，并且要与YOURLS_DB_PASS相同
+    volumes:
+      - ./mysql/db/:/var/lib/mysql
+      - ./mysql/conf/:/etc/mysql/conf.d
+    restart: always
+    container_name: mysql_yourls
+
+  yourls:
+    image: yourls
+    restart: always
+    ports:
+      - "127.0.0.1:8500:80"
+    environment:
+      YOURLS_DB_HOST: mysql
+      YOURLS_DB_USER: xct258
+      YOURLS_DB_PASS: 这里的密码要和MYSQL_PASSWORD相同
+      YOURLS_DB_NAME: yourls
+      YOURLS_USER: xct258      # 自己起一个名字
+      YOURLS_PASS: 这里需要一个密码      # 自己换一个登陆密码
+      YOURLS_SITE: https://yourls.xct258.top  # 换成你自己的域名
+      YOURLS_HOURS_OFFSET: 8
+    volumes:
+      - ./yourls_data/:/var/www/html
+    container_name: yourls_service
+    links:
+      - mysql:mysql
