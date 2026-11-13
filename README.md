@@ -9,6 +9,7 @@
 | 项目 | 说明 |
 |---|---|
 | [Debian初始化](Debian初始化/) | Debian 服务器初始化脚本（时区/locale/7z/Docker/ufw/开机任务/OCI 多 IP） |
+| [Termix远程操作](Termix远程操作/) | Termix 面板的 SSH 命令行客户端（列主机、跑命令、quick-connect） |
 | [IPv6动态解析](IPv6动态解析/) | IPv6 动态 DNS 更新（Shell / PowerShell / Go 三种实现） |
 | [CF优选IP](CF优选IP/) | Cloudflare 优选 IP 测速与 DNS 自动更新 |
 | [pve](pve/) | Proxmox VE 配置笔记 |
@@ -26,5 +27,6 @@
 ## 约定
 
 - 每个项目目录内自带 README，说明用途、部署方式和注意事项
+- [AGENTS.md](AGENTS.md)：AI Agent 的服务器操作约定（远程命令、安全规则、环境注意事项）
 - 安装包/驱动等二进制保留在对应项目目录（未使用 LFS）
 - 脚本默认只依赖系统自带工具；涉及第三方依赖的会在项目 README 里标注

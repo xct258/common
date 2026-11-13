@@ -1,0 +1,215 @@
+#!/usr/bin/env node
+// termix — 一行命令操作 Termix 里的服务器
+// 用法:
+//   termix ls
+//   termix run <id|名称|IP> <命令>
+//   termix run --cred <凭据id> <IP> <命令>   # 未登记进 Termix 的机器
+//   termix run --trust <id|名称|IP> <命令>   # 允许接受变更过的 host key
+// 令牌: 环境变量 TERMIX_TOKEN，或 ~/.termix-token
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const https = require('https');
+const WebSocket = require('ws');
+
+const BASE = process.env.TERMIX_URL || 'https://termix.xct258.top';
+const TOKEN =
+  process.env.TERMIX_TOKEN ||
+  (() => {
+    try { return fs.readFileSync(path.join(os.homedir(), '.termix-token'), 'utf8').trim(); }
+    catch { return ''; }
+  })();
+
+if (!TOKEN) { console.error('缺少 TERMIX_TOKEN'); process.exit(2); }
+
+function post(p, body) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body || {});
+    const req = https.request(BASE + p, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + TOKEN,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    }, res => {
+      let out = '';
+      res.on('data', c => (out += c));
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error(`${p} ${res.statusCode}: ${out.slice(0, 200)}`));
+        try { resolve(JSON.parse(out)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.end(data);
+  });
+}
+
+function get(p) {
+  return new Promise((resolve, reject) => {
+    https.get(BASE + p, { headers: { Authorization: 'Bearer ' + TOKEN } }, res => {
+      let out = '';
+      res.on('data', c => (out += c));
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error(`${p} ${res.statusCode}`));
+        resolve(JSON.parse(out));
+      });
+    }).on('error', reject);
+  });
+}
+
+const strip = s =>
+  s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+   .replace(/\x1b\][^\x07]*\x07/g, '')
+   .replace(/\r/g, '');
+
+const B = '__TMX_"BEG"IN__';
+const E = '__TMX_"EN"D__';
+const BEGIN = '__TMX_BEGIN__';
+const END = '__TMX_END__';
+
+function run(hostConfig, command, timeoutSec, trust) {
+  return new Promise(async (resolve, reject) => {
+    let ticket;
+    try { ({ ticket } = await post('/users/ws-ticket/api-key', {})); }
+    catch (e) { return reject(e); }
+
+    const ws = new WebSocket(BASE.replace('https', 'wss') + '/plugin-ws/ssh-terminal/terminal', {
+      headers: { Authorization: 'Bearer ' + ticket },
+      handshakeTimeout: 20000,
+    });
+
+    let buffer = '';
+    let connected = false;
+    const typed = command.split('\n').map(l => l.trim()).filter(Boolean);
+    let settled = false;
+    const done = (err, out) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch {}
+      err ? reject(err) : resolve(out);
+    };
+    const timer = setTimeout(() => done(new Error('timeout')), (timeoutSec || 60) * 1000);
+
+    ws.on('unexpected-response', (_q, res) => done(new Error('ws rejected ' + res.statusCode)));
+    ws.on('error', e => done(e));
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        type: 'connectToHost',
+        data: { cols: 200, rows: 50, hostConfig },
+      }));
+    });
+
+    ws.on('message', raw => {
+      let m;
+      try { m = JSON.parse(raw.toString()); } catch { return; }
+      if (m.type === 'host_key_verification_required') {
+        const d = m.data || {};
+        process.stderr.write(`[host key] 首次见到 ${d.keyType}，仅本次接受\n`);
+        ws.send(JSON.stringify({ type: 'host_key_verification_response', data: { action: 'accept' } }));
+        return;
+      }
+      if (m.type === 'host_key_changed') {
+        const d = m.data || {};
+        if (!trust) {
+          return done(new Error(
+            `host key 变更，已拒绝。旧=${(d.oldFingerprint||'').slice(-16)} 新=${(d.fingerprint||'').slice(-16)}\n` +
+            `确认无误后加 --trust 重试`));
+        }
+        process.stderr.write('[host key] 已按 --trust 接受新 key\n');
+        ws.send(JSON.stringify({ type: 'host_key_verification_response', data: { action: 'accept' } }));
+        return;
+      }
+      if (m.type === 'connected') {
+        if (connected) return;
+        connected = true;
+        const cmd = `stty -echo 2>/dev/null; export TERM=dumb; PS1=; PS2=; PROMPT_COMMAND= \n`
+          + `printf '%s\\n' ${B}\n${command}\nprintf '%s:%s\\n' ${E} "$?"\n`;
+        ws.send(JSON.stringify({ type: 'input', data: cmd }));
+        return;
+      }
+      if (m.type === 'data') {
+        buffer += m.data || '';
+        if (!connected) return;
+        const text = strip(buffer);
+        const i = text.lastIndexOf(END + ':');
+        if (i === -1 || text.indexOf(BEGIN) === -1) return;
+        const start = text.indexOf(BEGIN) + BEGIN.length;
+        const code = (text.slice(i + END.length + 1).match(/^-?\d+/) || ['0'])[0];
+        const out = text.slice(start, i)
+          .replace(/^\s*\n/, '')
+          .replace(/\n\s*$/, '')
+          .split('\n')
+          .filter(l => !typed.includes(l.trim()))
+          .filter(l => !/__TMX_"(BEG|EN)"/.test(l))
+          .join('\n');
+        done(null, { out, code: Number(code) });
+        return;
+      }
+      if (m.type === 'error') return done(new Error(m.message || 'ssh error'));
+      if (/^(password_required|passphrase_required|totp_required)$/.test(m.type)) {
+        return done(new Error('需要交互式认证: ' + m.type));
+      }
+    });
+  });
+}
+
+(async () => {
+  const [cmd, ...rest] = process.argv.slice(2);
+
+  if (!cmd || cmd === 'ls' || cmd === 'list') {
+    const hosts = await get('/host/db/host');
+    for (const h of hosts) {
+      console.log(`${String(h.id).padStart(2)}  ${h.name.padEnd(20)} ${h.username}@${h.ip}:${h.port}  [${h.folder}]`);
+    }
+    return;
+  }
+
+  if (cmd !== 'run') { console.error('用法: termix ls | termix run <target> <command>'); process.exit(2); }
+
+  let trust = false;
+  let credId = null;
+  const args = [...rest];
+  while (args[0] && args[0].startsWith('--')) {
+    if (args[0] === '--trust') { trust = true; args.shift(); }
+    else if (args[0] === '--cred') { credId = Number(args[1]); args.splice(0, 2); }
+    else { console.error('未知参数 ' + args[0]); process.exit(2); }
+  }
+
+  const target = args.shift();
+  const command = args.join(' ');
+  if (!target || !command) { console.error('缺 target 或命令'); process.exit(2); }
+
+  let hostConfig;
+  if (credId) {
+    const temp = await post('/host/quick-connect', {
+      ip: target, port: Number(process.env.TERMIX_PORT || 22),
+      username: process.env.TERMIX_USER || 'root',
+      authType: 'credential', credentialId: credId,
+    });
+    hostConfig = {
+      id: 0, ip: temp.ip, port: temp.port, username: temp.username,
+      password: temp.password, key: temp.key, keyPassword: temp.keyPassword,
+      keyType: temp.keyType, authType: temp.authType,
+    };
+  } else {
+    const hosts = await get('/host/db/host');
+    const h = hosts.find(x =>
+      String(x.id) === target || x.name === target || x.ip === target);
+    if (!h) { console.error(`找不到主机 ${target}（先 termix ls 看看，或用 --cred <凭据id> <IP>）`); process.exit(1); }
+    hostConfig = {
+      id: h.id, ip: h.ip, port: h.port, username: h.username, authType: h.authType,
+    };
+  }
+
+  try {
+    const { out, code } = await run(hostConfig, command, Number(process.env.TERMIX_TIMEOUT || 60), trust);
+    if (out) process.stdout.write(out + '\n');
+    process.exit(code);
+  } catch (e) {
+    console.error('错误: ' + e.message);
+    process.exit(1);
+  }
+})();
