@@ -370,7 +370,7 @@ setup_ssh_notify() {
     return 0
   fi
   download_or_die \
-    "https://raw.githubusercontent.com/xct258/common/refs/heads/main/脚本工具/shell/服务器运维/ssh登录提醒.sh" \
+    "https://raw.githubusercontent.com/xct258/common/refs/heads/main/SSH%E7%99%BB%E5%BD%95%E6%8F%90%E9%86%92/ssh%E7%99%BB%E5%BD%95%E6%8F%90%E9%86%92.sh" \
     "$WORK_DIR/ssh_login_notify.sh"
   install -m 0644 "$WORK_DIR/ssh_login_notify.sh" "$SSH_NOTIFY"
   log "32;1" "SSH 登录提醒已安装"
