@@ -91,14 +91,19 @@ _ssh_login_notify() {
 }
 
 # 仅 SSH 会话；按连接去重（先建标记再后台推送，避免并发重复）
+# 登录路径只做纯 bash 的字符串处理，不 fork 外部命令，避免拖慢登录
 if [ -n "${SSH_CONNECTION:-}" ]; then
-  _ssh_login_notify_marker="/tmp/.ssh_notify_$(printf '%s' "$SSH_CONNECTION" | md5sum | awk '{print $1}')"
-  if [ ! -f "$_ssh_login_notify_marker" ]; then
+  _ssh_login_notify_key=${SSH_CONNECTION//[^0-9A-Za-z]/_}
+  _ssh_login_notify_marker="/tmp/.ssh_notify_${_ssh_login_notify_key}"
+  if [ ! -e "$_ssh_login_notify_marker" ]; then
     : > "$_ssh_login_notify_marker" 2>/dev/null || true
-    find /tmp -maxdepth 1 -name '.ssh_notify_*' -mtime +1 -delete 2>/dev/null || true
-    _ssh_login_notify >/dev/null 2>&1 &
+    # 清理、探测、推送全部放进后台，且断开 stdin，避免占用终端
+    (
+      find /tmp -maxdepth 1 -name '.ssh_notify_*' -mtime +1 -delete 2>/dev/null || true
+      _ssh_login_notify
+    ) </dev/null >/dev/null 2>&1 &
     disown 2>/dev/null || true
   fi
-  unset _ssh_login_notify_marker
+  unset _ssh_login_notify_key _ssh_login_notify_marker
 fi
 unset -f _ssh_login_notify
