@@ -14,7 +14,6 @@
 | [pve](pve/) | Proxmox VE 配置笔记 |
 | [openwrt](openwrt/) | OpenWrt 配置笔记 |
 | [lxd](lxd/) | LXD 容器使用笔记 |
-| [rc-local](rc-local/) | rc.local 开机启动配置 |
 | [SSH登录提醒](SSH登录提醒/) | SSH 登录 Telegram 提醒 |
 | [服务器备份](服务器备份/) | 服务器备份监控脚本 |
 | [日志推送](日志推送/) | 日志记录与消息推送函数库 |
