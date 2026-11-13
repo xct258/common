@@ -13,4 +13,4 @@
 - 建议由 `boot-exec` 或 systemd 定时任务调用
 - 推送地址与密码均为占位符，使用前替换
 
-相关项目：[truenas](../TrueNAS存储/)（存储侧备份脚本）、[rclone](../rclone/)。
+相关项目：[TrueNAS存储](../TrueNAS存储/)（存储侧备份脚本）。
