@@ -8,27 +8,26 @@
 
 | 项目 | 说明 |
 |---|---|
-| [debian-init](debian-init/) | Debian 服务器初始化脚本（时区/locale/7z/Docker/ufw/开机任务/OCI 多 IP） |
-| [oci-network](oci-network/) | 甲骨文云附加 IPv4 / IPv6 配置笔记 |
-| [ipv6-ddns](ipv6-ddns/) | IPv6 动态 DNS 更新（Shell / PowerShell / Go 三种实现） |
-| [cf-ip-optimizer](cf-ip-optimizer/) | Cloudflare 优选 IP 测速与 DNS 自动更新 |
+| [Debian初始化](Debian初始化/) | Debian 服务器初始化脚本（时区/locale/7z/Docker/ufw/开机任务/OCI 多 IP） |
+| [甲骨文云网络](甲骨文云网络/) | 甲骨文云附加 IPv4 / IPv6 配置笔记 |
+| [IPv6动态解析](IPv6动态解析/) | IPv6 动态 DNS 更新（Shell / PowerShell / Go 三种实现） |
+| [CF优选IP](CF优选IP/) | Cloudflare 优选 IP 测速与 DNS 自动更新 |
 | [pve](pve/) | Proxmox VE 配置笔记 |
 | [openwrt](openwrt/) | OpenWrt 配置笔记 |
 | [lxd](lxd/) | LXD 容器使用笔记 |
 | [rc-local](rc-local/) | rc.local 开机启动配置 |
 | [rclone](rclone/) | rclone 配置说明与辅助脚本 |
-| [ssh-login-notify](ssh-login-notify/) | SSH 登录 Telegram 提醒 |
-| [server-backup](server-backup/) | 服务器备份监控脚本 |
-| [log-push](log-push/) | 日志记录与消息推送函数库 |
-| [server-monitor](server-monitor/) | 服务监控面板（PHP） |
-| [random-image-api](random-image-api/) | 随机图片 API |
-| [web-templates](web-templates/) | 通用前端组件与样式模板 |
-| [docker](docker/) | Docker 服务部署，一个服务一个目录 |
-| [truenas](truenas/) | TrueNAS 配置、备份与硬盘休眠/空间监控 |
-| [media](media/) | 媒体串流相关驱动与安装包 |
-| [project-recorder](project-recorder/) | ProjectRecorder 桌面工具（.NET） |
-| [server-reinstall](server-reinstall/) | 服务器网络重装笔记 |
-| [github-file-sync](github-file-sync/) | GitHub 文件自动更新脚本 |
+| [SSH登录提醒](SSH登录提醒/) | SSH 登录 Telegram 提醒 |
+| [服务器备份](服务器备份/) | 服务器备份监控脚本 |
+| [日志推送](日志推送/) | 日志记录与消息推送函数库 |
+| [服务监控](服务监控/) | 服务监控面板（PHP） |
+| [随机图片API](随机图片API/) | 随机图片 API |
+| [Docker容器](Docker容器/) | Docker 服务部署，一个服务一个目录 |
+| [TrueNAS存储](TrueNAS存储/) | TrueNAS 配置、备份与硬盘休眠/空间监控 |
+| [媒体串流](媒体串流/) | 媒体串流相关驱动与安装包 |
+| [项目记录器](项目记录器/) | ProjectRecorder 桌面工具（.NET） |
+| [服务器重装](服务器重装/) | 服务器网络重装笔记 |
+| [GitHub文件同步](GitHub文件同步/) | GitHub 文件自动更新脚本 |
 
 ## 约定
 

@@ -1,4 +1,4 @@
-# cf-ip-optimizer
+# CF 优选 IP
 
 Cloudflare 优选 IP 工具：测速筛选延迟最低的节点，并通过 API 自动更新 DNS 记录。
 

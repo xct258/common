@@ -1,4 +1,4 @@
-# debian-init
+# Debian 初始化
 
 Debian 服务器初始化脚本，用于重装系统后一次性完成常用配置。
 
@@ -37,4 +37,4 @@ chmod +x debian服务器开机执行脚本.sh
 
 ## OCI 说明
 
-OCI 元数据只提供主私有 IP 和 IPv6 列表，**辅助 IPv4 不会通过 DHCP 下发**，需要在 OCI 控制台分配后手工录入 CIDR。详见 [oci-network](../oci-network/)。
+OCI 元数据只提供主私有 IP 和 IPv6 列表，**辅助 IPv4 不会通过 DHCP 下发**，需要在 OCI 控制台分配后手工录入 CIDR。详见 [oci-network](../甲骨文云网络/)。

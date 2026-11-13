@@ -1,12 +1,12 @@
-# oci-network
+# 甲骨文云网络
 
 甲骨文云（OCI）网络相关笔记：附加 IPv4 / IPv6 的分配方式与配置思路。
 
 ## 内容
 
 - [甲骨文云添加ipv6和多ip.txt](甲骨文云添加ipv6和多ip.txt) — 控制台操作与系统内配置步骤
-- IPv6 动态解析脚本见 [ipv6-ddns](../ipv6-ddns/)
-- 自动配置脚本见 [debian-init](../debian-init/)
+- IPv6 动态解析脚本见 [ipv6-ddns](../IPv6动态解析/)
+- 自动配置脚本见 [debian-init](../Debian初始化/)
 
 ## 要点
 

@@ -1,4 +1,4 @@
-# ipv6-ddns
+# IPv6 动态解析
 
 IPv6 动态 DNS（DDNS）更新工具，三种实现按平台分目录。
 

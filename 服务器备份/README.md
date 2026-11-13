@@ -1,4 +1,4 @@
-# server-backup
+# 服务器备份
 
 服务器综合备份与监控脚本：目录打包、上传网盘、空间与状态检查，并推送结果。
 
@@ -13,4 +13,4 @@
 - 建议由 `boot-exec` 或 systemd 定时任务调用
 - 推送地址与密码均为占位符，使用前替换
 
-相关项目：[truenas](../truenas/)（存储侧备份脚本）、[rclone](../rclone/)。
+相关项目：[truenas](../TrueNAS存储/)（存储侧备份脚本）、[rclone](../rclone/)。

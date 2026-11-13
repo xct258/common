@@ -35,7 +35,7 @@ cd <仓库目录>/小工具
 
 **Windows**：双击 `publish.bat`，等窗口显示“发布完成”。
 
-等价的手动命令（在 `project-recorder/` 目录执行）：
+等价的手动命令（在 `项目记录器/` 目录执行）：
 
 ```
 dotnet publish src/ProjectRecorder/ProjectRecorder.csproj -c Release -o publish
@@ -97,7 +97,7 @@ chmod +x publish.sh && ./publish.sh
 ## 6. 项目结构
 
 ```
-project-recorder/            本目录（编译请在这里执行）
+项目记录器/            本目录（编译请在这里执行）
   ProjectRecorder.sln
   publish.bat / publish.sh            一键发布（Win / Linux）
   publish/小工具.exe                  发布产物（随仓库一起发布）
