@@ -56,6 +56,23 @@ cleanup() {
   log "" ">>> 脚本结束，退出码=$rc"
 }
 
+self_delete() {
+  # 执行完成后删除脚本自身；管道/进程替换执行时跳过
+  if [ "${KEEP_INIT_SCRIPT:-0}" = "1" ]; then
+    log "33;1" "KEEP_INIT_SCRIPT=1，保留脚本文件"
+    return 0
+  fi
+  local src="${BASH_SOURCE[0]:-}"
+  [ -n "$src" ] || return 0
+  [ "$src" = "$0" ] || return 0      # 被 source 时不清除
+  case "$src" in
+    /dev/fd/*|/proc/*|bash|sh) return 0 ;;
+  esac
+  if [ -f "$src" ]; then
+    rm -f -- "$src" && log "32;1" "已删除脚本文件：$src"
+  fi
+}
+
 ask_yn() {
   # ask_yn <提示> <默认 y|n>
   local prompt="$1" default="${2:-n}" answer
@@ -626,6 +643,7 @@ main() {
   configure_oci_ips
 
   log "32;1" "执行成功"
+  self_delete
 }
 
 main "$@"
