@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Upload a file to a Termix host through the File Manager plugin's HTTP API.
+#
+# Usage:
+#   termix-upload <host-id|host-name|host-ip> <local-file> [remote-dir] [remote-name]
+#
+# Examples:
+#   termix-upload op-1 ./openwrt.img.gz /tmp
+#   termix-upload 9 ./openwrt.img.gz /tmp openwrt.img.gz
+#
+# Requires: bash, curl, node, and the same ~/.termix-token as termix.
+
+set -euo pipefail
+
+BASE="${TERMIX_URL:-https://termix.xct258.top}"
+BASE="${BASE%/}"
+TOKEN="${TERMIX_TOKEN:-}"
+if [ -z "$TOKEN" ]; then
+	TOKEN_FILE="${TERMIX_TOKEN_FILE:-$HOME/.termix-token}"
+	if [ ! -r "$TOKEN_FILE" ]; then
+		echo "缺少 Termix API Key: $TOKEN_FILE" >&2
+		exit 1
+	fi
+	TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
+fi
+
+if [ "$#" -lt 2 ]; then
+	echo "用法: $0 <主机ID|名称|IP> <本地文件> [远端目录] [远端文件名]" >&2
+	exit 1
+fi
+
+HOST_QUERY="$1"
+LOCAL_FILE="$2"
+REMOTE_DIR="${3:-/tmp}"
+REMOTE_NAME="${4:-$(basename "$LOCAL_FILE")}"
+
+if [ ! -f "$LOCAL_FILE" ]; then
+	echo "本地文件不存在: $LOCAL_FILE" >&2
+	exit 1
+fi
+if [ ! -s "$LOCAL_FILE" ]; then
+	echo "本地文件为空: $LOCAL_FILE" >&2
+	exit 1
+fi
+
+# Resolve the host from the existing termix CLI JSON output.
+HOST_JSON="$(termix ls --json)"
+HOST_INFO="$(
+	printf '%s' "$HOST_JSON" | node -e '
+const fs = require("fs");
+const hosts = JSON.parse(fs.readFileSync(0, "utf8"));
+const q = process.argv[1];
+const h = hosts.find(x => String(x.id) === q || x.name === q || x.ip === q) ||
+          hosts.find(x => (x.name || "").toLowerCase() === q.toLowerCase());
+if (!h) process.exit(2);
+console.log([h.id, h.ip, h.port || 22, h.username || "root", h.syncId || ""].join("\t"));
+' "$HOST_QUERY"
+)" || {
+	echo "找不到主机: $HOST_QUERY" >&2
+	exit 1
+}
+
+IFS=$'\t' read -r HOST_ID HOST_IP HOST_PORT HOST_USER HOST_SYNC <<< "$HOST_INFO"
+SESSION_ID="tmxup-$(date +%s)-$$-$RANDOM"
+TMPD=""
+CONNECT_BODY="$(
+	node -e '
+const [sessionId, hostId, syncId, ip, port, username] = process.argv.slice(1);
+const body = { sessionId, hostId: Number(hostId), ip, port: Number(port), username };
+if (syncId) body.syncId = syncId;
+process.stdout.write(JSON.stringify(body));
+' "$SESSION_ID" "$HOST_ID" "$HOST_SYNC" "$HOST_IP" "$HOST_PORT" "$HOST_USER"
+)"
+
+cleanup() {
+	curl -sS --max-time 10 \
+		-H "Authorization: Bearer $TOKEN" \
+		-H 'Content-Type: application/json' \
+		-d "{\"sessionId\":\"$SESSION_ID\"}" \
+		"$BASE/plugin-api/file-manager/disconnect" >/dev/null 2>&1 || true
+	[ -n "$TMPD" ] && rm -rf "$TMPD"
+}
+trap cleanup EXIT INT TERM
+
+echo "连接 $HOST_USER@$HOST_IP:$HOST_PORT (hostId=$HOST_ID) ..."
+CONNECT_RESP="$(
+	curl -sS --max-time 30 -w '\n%{http_code}' \
+		-H "Authorization: Bearer $TOKEN" \
+		-H 'Content-Type: application/json' \
+		--data "$CONNECT_BODY" \
+		"$BASE/plugin-api/file-manager/connect"
+)"
+CONNECT_CODE="${CONNECT_RESP##*$'\n'}"
+CONNECT_JSON="${CONNECT_RESP%$'\n'*}"
+if [ "$CONNECT_CODE" != "200" ]; then
+	echo "连接失败 (HTTP $CONNECT_CODE):" >&2
+	echo "$CONNECT_JSON" >&2
+	exit 1
+fi
+
+urlenc() {
+	node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1"
+}
+
+echo "上传 $LOCAL_FILE → $HOST_QUERY:$REMOTE_DIR/$REMOTE_NAME ..."
+TOTAL="$(stat -c %s "$LOCAL_FILE")"
+
+if [ "$TOTAL" -gt 2097152 ]; then
+	CHUNK="${CHUNK_SIZE:-524288}"
+	TMPD="$(mktemp -d)"
+	echo "分块上传：每块 ${CHUNK} 字节，共 $(( (TOTAL + CHUNK - 1) / CHUNK )) 块（避免 Cloudflare 524）"
+	offset=0
+	index=0
+	while [ "$offset" -lt "$TOTAL" ]; do
+		dd if="$LOCAL_FILE" of="$TMPD/chunk" bs="$CHUNK" skip="$index" count=1 status=none
+		bytes="$(stat -c %s "$TMPD/chunk")"
+		[ "$bytes" -gt 0 ] || break
+
+		attempt=1
+		code=""
+		while [ "$attempt" -le 3 ]; do
+			URL="$BASE/plugin-api/file-manager/uploadFileChunk?sessionId=$SESSION_ID&path=$(urlenc "$REMOTE_DIR")&fileName=$(urlenc "$REMOTE_NAME")&offset=$offset&totalSize=$TOTAL&overwrite=true"
+			RESP="$(curl -sS --max-time 120 -w '\n%{http_code}' \
+				-H "Authorization: Bearer $TOKEN" \
+				-H 'Content-Type: application/octet-stream' \
+				--data-binary @"$TMPD/chunk" "$URL" 2>&1 || true)"
+			code="${RESP##*$'\n'}"
+			body="${RESP%$'\n'*}"
+			[ "$code" = "200" ] && break
+			echo "  块 $((index + 1)) 第 ${attempt} 次失败 (HTTP $code): $body" >&2
+			attempt=$((attempt + 1))
+			sleep 2
+		done
+		if [ "$code" != "200" ]; then
+			echo "分块上传失败，已中止。" >&2
+			exit 1
+		fi
+
+		offset=$((offset + bytes))
+		index=$((index + 1))
+		echo "  ${offset}/${TOTAL} 字节 ($((offset * 100 / TOTAL))%)"
+	done
+	echo "完成: $REMOTE_DIR/$REMOTE_NAME"
+else
+	UPLOAD_RESP="$(
+		curl -sS --max-time 0 --progress-bar \
+			-w '\nHTTP %{http_code}  上传速度 %{speed_upload} B/s\n' \
+			-H "Authorization: Bearer $TOKEN" \
+			-F "sessionId=$SESSION_ID" \
+			-F "path=$REMOTE_DIR" \
+			-F "overwrite=true" \
+			-F "file=@${LOCAL_FILE};filename=${REMOTE_NAME}" \
+			"$BASE/plugin-api/file-manager/uploadFileStream" 2>&1
+	)"
+	printf '%s\n' "$UPLOAD_RESP"
+
+	if printf '%s\n' "$UPLOAD_RESP" | grep -q 'HTTP 200'; then
+		echo "完成: $REMOTE_DIR/$REMOTE_NAME"
+	else
+		echo "上传可能失败，请检查上面的返回内容。" >&2
+		exit 1
+	fi
+fi

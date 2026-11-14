@@ -17,7 +17,7 @@ const http = require('http');
 const https = require('https');
 const WebSocket = require('ws');
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const DEFAULT_URL = 'https://termix.xct258.top';
 
 const BEGIN = '__TMX_BEGIN__';
@@ -315,7 +315,9 @@ function usage() {
       '用法:\n' +
       '  termix ls [--json]                        列出登记的主机\n' +
       '  termix run <id|名称|IP> <命令>            在已登记主机上执行\n' +
-      '  termix run --cred <凭据id> <IP> <命令>    未登记主机（quick-connect，不写库）\n\n' +
+      '  termix run --cred <凭据id> <IP> <命令>    未登记主机（quick-connect，不写库）\n' +
+      '  termix upload <id|名称|IP> <文件> [目录] [名称]\n' +
+      '                                            通过 File Manager 插件上传文件\n\n' +
       '选项:\n' +
       '  --trust          接受变更过的 host key\n' +
       '  --no-trust       强制拒绝变更过的 host key\n' +
@@ -458,8 +460,18 @@ async function main() {
     usage();
     process.exit(2);
   }
-  if (cmd !== 'ls' && cmd !== 'list' && cmd !== 'run') {
+  if (cmd !== 'ls' && cmd !== 'list' && cmd !== 'run' && cmd !== 'upload') {
     die(`未知子命令 ${cmd}\n\n（termix --help 看用法）`, 2);
+  }
+
+  if (cmd === 'upload') {
+    const { spawnSync } = require('child_process');
+    const helper = path.join(__dirname, 'termix-upload');
+    if (!fs.existsSync(helper)) {
+      die(`找不到上传工具: ${helper}\n  重新运行 install.sh，或在该目录执行 bash install.sh`, 1);
+    }
+    const r = spawnSync(helper, argv, { stdio: 'inherit' });
+    process.exit(r.status === null ? 1 : r.status);
   }
 
   BASE = baseUrl();

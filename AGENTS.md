@@ -1,9 +1,10 @@
 # 服务器操作约定（Termix）
 
 本机不在用户内网，`192.168.50.0/24` 只能经 Termix（跑在 `192.168.50.4`）中转。
-所有远程操作走 `termix` 命令，不要自己拼 WebSocket 请求。
+所有远程操作走 `termix` 命令，不要自己拼 WebSocket 请求；文件上传走 `termix upload`。
 
 - CLI：`~/.config/opencode/bin/termix`（`/usr/local/bin/termix` 已软链）
+- 上传：`~/.config/opencode/bin/termix-upload`（`/usr/local/bin/termix-upload` 已软链）
 - 令牌：`~/.termix-token`（600）。缺失时向用户要，不要写进任何仓库
 - 面板：https://termix.xct258.top/
 
@@ -15,12 +16,17 @@ termix ls --json                            # 同上，JSON（便于解析）
 termix run <id|名称|IP> "<命令>"             # 已登记主机
 termix run --cred <凭据id> <IP> "<命令>"      # 未登记主机（quick-connect，不改库）
 termix run --trust <目标> "<命令>"            # 接受变更过的 host key（已设为默认做法）
+termix upload <id|名称|IP> <文件> [目录] [名称] # 通过 File Manager 插件上传
 ```
 
 环境变量：`TERMIX_TIMEOUT`（秒，默认 60）、`TERMIX_TRUST`（`1` 等价于始终 `--trust`）、
 `TERMIX_PORT`、`TERMIX_USER`、`TERMIX_URL`、`TERMIX_TOKEN`、`TERMIX_TOKEN_FILE`。
 命令走完整 PTY，支持多行、管道、`&&`；退出码等于远端命令的退出码（归一化到 0–255）。
 连接在结束标记前断开（远端 `exit`/`reboot`、断网）会以退出码 1 结束并回显最后输出。
+
+`termix upload` 走 Termix File Manager 插件（SFTP），不经过终端通道。目标主机需要
+`openssh-sftp-server`；大于 2MB 的文件会自动按 512KB 分块，避免 Cloudflare 524。
+上传速度受 Termix 服务器到目标主机的链路限制，大文件优先考虑局域网中转。
 
 ## 主机清单
 
@@ -52,4 +58,5 @@ termix run <id|名称|IP> 'docker ps --format "{{.Names}}|{{.Status}}"'
 termix run <pve主机> 'qm list; pvesm status'          # 虚拟机与存储
 termix run <debian主机> 'systemctl --failed'
 termix run --cred <凭据id> <IP> 'ubus call system board'
+termix upload <id|名称|IP> ./firmware.img.gz /tmp     # 文件上传
 ```

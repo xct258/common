@@ -1,12 +1,15 @@
 {
   "name": "termix-cli",
-  "version": "1.1.0",
-  "description": "用一条命令操作 Termix 里登记的服务器",
+  "version": "1.2.0",
+  "description": "用一条命令操作 Termix 里登记的服务器（命令执行与文件上传）",
   "bin": {
-    "termix": "./termix"
+    "termix": "./termix",
+    "termix-upload": "./termix-upload"
   },
   "files": [
-    "termix"
+    "termix",
+    "termix-upload",
+    "termix-upload.md"
   ],
   "dependencies": {
     "ws": "^8.18.0"

@@ -1,6 +1,6 @@
 # Termix 远程操作
 
-用一条命令操作 [Termix](https://github.com/Termix-SSH/Termix) 里登记的服务器：列主机、跑命令、拿退出码。
+用一条命令操作 [Termix](https://github.com/Termix-SSH/Termix) 里登记的服务器：列主机、跑命令、拿退出码，或通过 File Manager 插件上传文件。
 命令走 Termix 面板的 SSH 终端通道，内网机器不需要在本地暴露端口，也不需要本机保存私钥。
 
 ## 文件
@@ -8,7 +8,9 @@
 | 文件 | 说明 |
 | --- | --- |
 | `termix` | Node CLI 本体（单文件，除 `ws` 外无第三方依赖） |
-| `install.sh` | 安装到 `~/.config/opencode/bin/` 并软链到 `/usr/local/bin/termix` |
+| `termix-upload` | 通过 Termix File Manager 插件上传文件的工具（bash + curl） |
+| `termix-upload.md` | 上传工具详细说明 |
+| `install.sh` | 安装到 `~/.config/opencode/bin/` 并软链到 `/usr/local/bin/` |
 | `package.json` | 元数据，可在本目录 `npm i -g .`（未发布到 npm） |
 | [../AGENTS.md](../AGENTS.md) | 给 AI Agent 的操作约定（安全规则、环境注意事项） |
 
@@ -18,6 +20,11 @@
 - `ws` 模块：
   - Debian/Ubuntu：`apt install node-ws`
   - 或 `npm install ws`
+- `curl`（仅 `termix upload` 需要）
+- 目标主机需要 SFTP server（仅 `termix upload` 需要）：
+  ```sh
+  apk add openssh-sftp-server
+  ```
 
 ## 安装
 
@@ -29,11 +36,13 @@ bash install.sh
 
 ```bash
 install -m 755 termix ~/.config/opencode/bin/termix
+install -m 755 termix-upload ~/.config/opencode/bin/termix-upload
 ln -sf ~/.config/opencode/bin/termix /usr/local/bin/termix
+ln -sf ~/.config/opencode/bin/termix-upload /usr/local/bin/termix-upload
 ```
 
 `install.sh` 默认不覆盖 `/usr/local/bin/termix` 上已有的非本工具文件；确认可覆盖时加 `--force`。
-安装目录和软链位置可用 `TERMIX_BIN_DIR` / `TERMIX_LINK` 覆盖。
+安装目录和软链位置可用 `TERMIX_BIN_DIR` / `TERMIX_LINK` / `TERMIX_UPLOAD_LINK` 覆盖。
 
 ## 令牌
 
@@ -55,6 +64,7 @@ termix ls --json                            # 同上，输出 JSON（给脚本/A
 termix run <id|名称|IP> "<命令>"             # 已登记主机
 termix run --cred <凭据id> <IP> "<命令>"      # 未登记主机（quick-connect，不写库）
 termix run --trust <目标> "<命令>"            # 接受变更过的 host key
+termix upload <id|名称|IP> <文件> [目录] [名称] # 通过 File Manager 插件上传
 termix --help                               # 用法
 ```
 
@@ -65,7 +75,35 @@ termix run 3 'df -h -x tmpfs -x devtmpfs'
 termix ls | grep pve
 termix run pve-1 'qm list; pvesm status'
 termix run --cred 2 192.168.50.200 'ubus call system board'
+termix upload op-1 ./firmware.img.gz /tmp
 ```
+
+### 上传文件
+
+`termix upload` 是 `termix-upload` 的等价入口，调用 Termix File Manager 插件：
+
+```text
+POST /plugin-api/file-manager/connect
+POST /plugin-api/file-manager/uploadFileStream
+POST /plugin-api/file-manager/uploadFileChunk   # 大于 2MB 自动分块
+POST /plugin-api/file-manager/disconnect
+```
+
+认证使用同一个 API Key：
+
+```http
+Authorization: Bearer <Termix API Key>
+```
+
+连接参数（hostId、syncId、IP、端口、用户名）从 `termix ls --json` 读取，SSH 密码/密钥由 Termix 服务端解析，不会出现在本地。
+
+大于 2MB 的文件会按 **512KB 分块**上传，避免单次请求被 Cloudflare 524 中断。详细说明见 `termix-upload.md`。
+
+注意：
+
+- 目标主机需要 `openssh-sftp-server`
+- Termix File Manager 上传速度受 Termix 服务器到目标主机的 SFTP 链路限制
+- 大文件建议用更快的局域网中转，或耐心等待
 
 ### 环境变量
 
