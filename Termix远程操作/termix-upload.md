@@ -34,6 +34,21 @@ termix-upload 9 ./openwrt.img.gz /tmp openwrt.img.gz
 SFTP error: Received exit code 127 while establishing SFTP session
 ```
 
+## Windows
+
+原生 Windows 不能直接运行本脚本（依赖 bash、`stat -c`、`dd`、`mktemp`）。用 WSL 或 Git Bash：
+
+```powershell
+wsl bash ./termix-upload op-1 .\firmware.img.gz /tmp
+```
+
+```bash
+# Git Bash
+bash termix-upload op-1 ./firmware.img.gz /tmp
+```
+
+`termix upload` 子命令在原生 Windows 下也不会自动调起本脚本，请直接按上面的方式调用。安装、令牌、路径和换行符等注意事项见 `README.md` 的 Windows 一节。
+
 ## 接口
 
 工具实际调用 Termix File Manager 插件：

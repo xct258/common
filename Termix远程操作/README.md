@@ -119,6 +119,89 @@ Authorization: Bearer <Termix API Key>
 
 命令通过完整 PTY 执行，支持多行、管道和 `&&`；本地退出码等于远端命令的退出码（归一化到 0–255）。
 
+## Windows
+
+原生 Windows 下 `termix ls` / `termix run` 可用（Node 纯实现）；`termix upload` 和 `install.sh` 依赖 bash 与 GNU 工具（`stat -c`、`dd`、`mktemp`、`ln -s`），需要 WSL 或 Git Bash。
+
+### 安装
+
+1. 安装 Node.js 18+。
+2. 在本目录安装 `ws`（`termix` 唯一的第三方依赖）：
+
+```powershell
+cd Termix远程操作
+npm install ws
+```
+
+也可以全局安装，顺便生成 `termix.cmd`：
+
+```powershell
+npm install -g .
+termix --version
+```
+
+不要直接运行 `install.sh`，它需要 bash 和 `ln -s`。
+
+### 令牌
+
+```powershell
+Set-Content -NoNewline "$env:USERPROFILE\.termix-token" "你的APIKey"
+```
+
+或只用环境变量（仅当前窗口有效）：
+
+```powershell
+$env:TERMIX_TOKEN = "你的APIKey"
+```
+
+`chmod 600` 在 Windows 不适用，改用 NTFS 权限保护这个文件，并且不要提交到仓库。
+
+### 运行
+
+```powershell
+node .\termix ls
+node .\termix ls --json
+node .\termix run pve-1 "df -h"
+```
+
+全局安装后可以直接用 `termix`；也可以放一个 `termix.cmd` 到 PATH：
+
+```bat
+@echo off
+node "%~dp0termix" %*
+```
+
+命令最终由远端 POSIX shell 解析。PowerShell 里建议用单引号，避免 `$` 被本地展开：
+
+```powershell
+node .\termix run pve-1 'echo $HOME; uname -a'
+```
+
+`cmd.exe` 会展开 `%变量%`，含 `%` 的命令请改用 PowerShell。
+
+### 上传
+
+`termix upload` 内部直接 `spawn` 同目录的 bash 脚本，原生 Windows 无法执行。请通过 WSL 或 Git Bash 调用：
+
+```powershell
+wsl bash ./termix-upload op-1 ./firmware.img.gz /tmp
+```
+
+```bash
+# Git Bash
+bash termix-upload op-1 ./firmware.img.gz /tmp
+```
+
+Git Bash 里本地路径写成 `/c/Users/...` 形式；WSL 访问 Windows 盘要经 `/mnt/c`，大文件会慢一些。上传逻辑不变，仍按 512KB 分块。
+
+### 换行符
+
+仓库里的 `termix` / `termix-upload` 使用 LF。Windows 上建议关闭 Git 的自动换行转换，否则 bash 脚本可能因 CRLF 报 `bad interpreter`：
+
+```powershell
+git config --global core.autocrlf false
+```
+
 ## 工作流程
 
 每次调用都是独立连接，不做连接复用：
